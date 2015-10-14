@@ -17,45 +17,14 @@ import math
 import serial
 import time
 import GCode
+import Delta
 
 class SmoothieDelta:
     """ SmootheDelta Calibrator """
     def __init__(self, gcode = None, radius = 100):
+        Delta.__init__(self, gcode, radius)
         self.radius = radius
-        self.gcode = gcode
-
-    def probe_points(self):
-        # Get the positions of the 3 towers
-        deg = 180.0/math.pi
-        px = -math.sin(60*deg) * self.radius
-        py = math.cos(60*deg) * self.radius
-        tower_A = -px, -py
-        tower_B = px, -py
-        tower_C = 0, self.radius
-
-        return tower_A, tower_B, tower_C, (0, 0), (-tower_A[0], -tower_A[1]), (-tower_B[0], -tower_B[1]), (-tower_C[0], -tower_C[1])
-
-
-    # Calibration routines adapted from Smoothieware
-    def probe_delta_points(self):
-        probe = self.probe_points()
-
-        max_delta = 0
-        last_z = None
-        for point in probe:
-            # Move to x, y = probe, z = 20mm
-            gcode.move(x = point[0], y = point[1], z=20.0)
-            z = self.gcode.zprobe()
-            if last_z is None:
-                last_z = z
-            else:
-                delta = math.fabs(z - last_z)
-                if delta > max_delta:
-                    max_delta = delta
-
-            pass
-
-        return max_delta
+        self = gcode
 
     def calibrate_endstops(self, target = 0.03):
         """ Run the endstop calibration """
@@ -69,7 +38,7 @@ class SmoothieDelta:
         """ 6. Calculate and apply new trims """
         """ 7. Go to 5 until converged """
 
-        trim = self.gcode.endstop_trim()
+        trim = self.endstop_trim()
         print("Trim Start: A:%f, B:%f, C:%f" % (trim[0], trim[1], trim[2]))
 
         # Get probe points
@@ -81,7 +50,7 @@ class SmoothieDelta:
         # Probe up to 10 times...
         for i in range(0,10):
             # Set trim
-            self.gcode.endstop_trim(trim[0], trim[1], trim[2])
+            self.endstop_trim(trim[0], trim[1], trim[2])
 
             # Home
             self.home()
@@ -89,8 +58,8 @@ class SmoothieDelta:
             # Get the Z at the base of the 3 towers
             tower_z = []
             for point in probe[0:3]:
-                self.gcode.move(x = point[0], y = point[1], z = 20)
-                tower_z.append(self.gcode.zprobe())
+                self.move(x = point[0], y = point[1], z = 20)
+                tower_z.append(self.zprobe())
                 pass
 
             trimscale = 1.2522 # Emperically determined
@@ -118,10 +87,10 @@ class SmoothieDelta:
         points = self.probe_points()
 
         # Find the bed at 0,0
-        self.gcode.home()
-        cmm = self.gcode.zprobe()
+        self.home()
+        cmm = self.zprobe()
 
-        delta_radius = self.gcode.delta_radius()
+        delta_radius = self.delta_radius()
 
         print("Radius: %fmm" % (delta_radius))
 
@@ -131,8 +100,8 @@ class SmoothieDelta:
             # Probe the three towers, and average
             zsum = 0
             for t in range(0, 3):
-                self.gcode.move(x=points[t][0], y=points[t][1], z=20)
-                zsum += self.gcode.zprobe()
+                self.move(x=points[t][0], y=points[t][1], z=20)
+                zsum += self.zprobe()
 
             m = zsum/3.0
             d = cmm - m
@@ -145,10 +114,10 @@ class SmoothieDelta:
             # decrease delta radius to adjust for high center
             delta_radius += d * drinc
 
-            self.gcode.delta_radius(delta_radius)
+            self.delta_radius(delta_radius)
 
-            self.gcode.home()
-            cmm = self.gcode.zprobe()
+            self.home()
+            cmm = self.zprobe()
             pass
 
         print("  FAIL: %fmm" % (delta_radius))

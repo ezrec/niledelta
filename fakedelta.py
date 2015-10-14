@@ -18,15 +18,10 @@ import math
 import serial
 import time
 
-import SmoothieDelta
+import DC42Delta
 
 def main():
-    port = serial.Serial(port="/dev/ttyUSB0", baudrate=250000,
-                         parity=serial.PARITY_NONE,
-                         stopbits=serial.STOPBITS_ONE,
-                         bytesize=serial.EIGHTBITS)
-
-    delta = DC42Delta(port)
+    delta = DC42Delta.DC42Delta()
 
     delta.calibrate()
 
