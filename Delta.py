@@ -30,7 +30,14 @@ class Delta(GCode.GCode):
         self.recalc()
 
     def copy(self):
-        return copy.copy(self)
+        delta = Delta(None)
+        delta.bed_radius = self.bed_radius
+        delta.radius = self.radius[:]
+        delta.diagonal = self.diagonal[:]
+        delta.angle = self.angle[:]
+        delta.endstop = self.endstop[:]
+        delta.recalc()
+        return delta
 
     def update(self):
         self.delta_radius(self.radius)
@@ -41,7 +48,7 @@ class Delta(GCode.GCode):
 
     def recalc(self):
         # Get the positions of the 3 towers
-        deg = 180.0/math.pi
+        deg = math.pi/180.0
 
         self.tower = [(), (), ()]
         for i in range(0,3):
@@ -50,9 +57,15 @@ class Delta(GCode.GCode):
             self.tower[i] = (px, py)
 
     def probe_points(self, count = 7):
+        deg = math.pi/180.0
 
         # Canonical points (towerA, towerB, towerC, center, midBC, midAC, midAB)
         if count == 7:
+            tower = [0] * 7
+            for i in range(0,3):
+                px = math.cos(self.angle[i] * deg) * self.bed_radius * 0.9
+                py = math.sin(self.angle[i] * deg) * self.bed_radius * 0.9
+                tower[i] = (px, py)
             return tower[0], tower[1], tower[2], (0, 0), (-tower[0][0], -tower[0][1]), (-tower[1][0], -tower[1][1]), (-tower[2][0], -tower[2][1])
 
         # Make a circle around the bed, ending at the center.
@@ -69,13 +82,16 @@ class Delta(GCode.GCode):
     def delta_to_motor(self, point = (0, 0, 0)):
         motor = [0, 0, 0]
         for i in range(0, 3):
-            motor[i] = self.endstop[i] + point[2] + math.sqrt(math.pow(self.diagonal[i], 2) - math.pow(point[0] - self.tower[i][0], 2) - math.pow(point[1] - self.tower[i][1], 2))
+            D2 = math.pow(self.diagonal[i], 2)
+            motor[i] = point[2] + math.sqrt(D2 - math.pow(point[0] - self.tower[i][0], 2) - math.pow(point[1] - self.tower[i][1], 2))
+            motor[i] += self.endstop[i]
 
         return motor
 
-    def motor_to_delta(self, motor = (0, 0, 0)):
+    def motor_to_delta(self, pos = (0, 0, 0)):
         coreF = [0, 0, 0]
         F = [0, 0, 0]
+        motor = pos[:]
         for i in range(0, 3):
             motor[i] -= self.endstop[i]
             coreF[i] = math.pow(self.tower[i][0], 2) + math.pow(self.tower[i][1], 2)

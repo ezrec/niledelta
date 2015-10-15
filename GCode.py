@@ -70,21 +70,19 @@ class GCode:
             pass
         pass
 
-    def move(self, x = None, y = None, z = None, e = None, f = None):
+    def move(self, point = None, e = None, f = None):
         """G1 move """
-        if x is None:
-            x = self.x
-        if y is None:
-            y = self.y
-        if z is None:
-            z = self.z
+        if point is None:
+            point = self.position
         if e is None:
             e = self.e
         if f is None:
             f = self.f
 
         if self.port is None:
-            self.fake_position = (x, y, z, e)
+            self.position = point
+            self.e = e
+            self.f = f
             return
 
         self.write("G1 X%.2f Y%.2f Z%.2f E%.2f F%d" % (x, y, z, e, f))
@@ -94,7 +92,8 @@ class GCode:
     def home(self):
         """G28 home """
         if self.port is None:
-            self.fake_position = (0, 0, 150, 0)
+            self.position = 0, 0, 150
+            self.e = 0
             return
 
         self.write("G28")
@@ -130,22 +129,26 @@ class GCode:
     def axis_report(self):
         """M114 axis report"""
         if self.port is None:
-            return self.fake_position
+            return self.position + (self.e, self.f)
 
         self.write("M114")
-        self.x, self.y, self.z, self.e = self._parse_axis_report(self.read("ok")[0])
+        pos = self._parse_axis_report(self.read("ok")[0])
+
+        self.position = pos[0:3]
+        self.e = pos[3]
+        return self.position + (self.e, self.f)
 
     def zprobe(self):
         """G30 single-probe"""
         if self.port is None:
-            if self.x == 0 and self.y == 0:
+            if self.position[0] == 0 and self.position[1] == 0:
                 return 0.5
             else:
                 return 0.1
 
         self.write("G30")
-        x, y, z, e = self._parse_axis_report(self.read("ok")[0])
-        return z
+        pos = self._parse_axis_report(self.read("ok")[0])
+        return pos[2]
 
     # REPETIER
     def endstop_trim_clear(self):
@@ -181,7 +184,7 @@ class GCode:
     # REPETIER
     def delta_radius(self, radius = None):
         if self.port is None:
-            return [90, 90, 90]
+            return [100.0, 100.0, 100.0]
 
         dradius = None
         dcorr = (None, None, None)
@@ -200,7 +203,7 @@ class GCode:
     # REPETIER
     def delta_diagonal(self, diagonal = None):
         if self.port is None:
-            return [196, 196, 196]
+            return [190.0, 190.0, 190.0]
 
         drod = None
         dcorr = (None, None, None)
@@ -220,7 +223,7 @@ class GCode:
     # REPETIER
     def delta_angle(self, angle = None):
         if self.port is None:
-            return 210, 330, 90
+            return [210, 330, 90]
 
         dangle = (None, None, None)
         for i in range(0, 3):

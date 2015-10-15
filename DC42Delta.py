@@ -23,7 +23,6 @@ import serial
 import time
 import GCode
 import Delta
-import numpy
 
 class DC42Delta(Delta.Delta):
     """ DC42Delta Calibrator """
@@ -32,17 +31,15 @@ class DC42Delta(Delta.Delta):
     #  0 - Endstop A trim
     #  1 - Endstop B trim
     #  2 - Endstop C trim
-    #  3 - Radius A
-    #  4 - Radius B
-    #  5 - Radius C
-    #  6 - Diagonal A
-    #  7 - Diagonal B
-    #  8 - Diagonal C
+    #  3 - Radius A/B/C
+    #  4 - Angle A
+    #  5 - Angle B
+    #  6 - Diagonal A/B/C
     #
     # The assumption is that the bed is flat and horizontal, and
     # that the tower angles are correct.
     #
-    numFactors = 9
+    numFactors = 7
     numPoints = numFactors
 
     def __init__(self, gcode = None):
@@ -64,21 +61,23 @@ class DC42Delta(Delta.Delta):
             lo.endstop[2] -= perturb
         elif deriv == 3:
             hi.radius[0] += perturb
-            lo.radius[0] -= perturb
-        elif deriv == 4:
             hi.radius[1] += perturb
-            lo.radius[1] -= perturb
-        elif deriv == 5:
             hi.radius[2] += perturb
+            lo.radius[0] -= perturb
+            lo.radius[1] -= perturb
             lo.radius[2] -= perturb
+        elif deriv == 4:
+            hi.angle[0] += perturb
+            lo.angle[0] -= perturb
+        elif deriv == 5:
+            hi.angle[1] += perturb
+            lo.angle[1] -= perturb
         elif deriv == 6:
             hi.diagonal[0] += perturb
-            lo.diagonal[0] -= perturb
-        elif deriv == 7:
             hi.diagonal[1] += perturb
-            lo.diagonal[1] -= perturb
-        elif deriv == 8:
             hi.diagonal[2] += perturb
+            lo.diagonal[0] -= perturb
+            lo.diagonal[1] -= perturb
             lo.diagonal[2] -= perturb
             pass
 
@@ -88,7 +87,54 @@ class DC42Delta(Delta.Delta):
         pos_hi = hi.motor_to_delta(pos)
         pos_lo = lo.motor_to_delta(pos)
 
-        return (pos_hi[2] - pos_lo[2])/(2 * perturb);
+        return (pos_hi[2] - pos_lo[2])/(2 * perturb)
+
+    def _print_matrix(self, name, matrix, rows, cols):
+        print name
+        for i in range(0, rows):
+            for j in range(0, cols):
+                print "%7.3f" % (matrix[i][j]),
+                pass
+            print
+            pass
+
+
+
+    def _gauss_jordan(self, mat = [0], n = 0):
+        for i in range(0,n):
+            vmax = math.fabs(mat[i][i])
+            for j in range(i+1,n):
+                rmax = math.fabs(mat[i][j])
+                if rmax > vmax:
+                    row = mat[i]
+                    mat[i] = mat[j]
+                    mat[j] = row
+                    vmax = rmax
+                    pass
+                pass
+
+            # self._print_matrix("Gauss%d:" % i, mat, n, n+1)
+
+            v = mat[i][i]
+            for j in range(0, n):
+                if j == i:
+                    continue
+
+                factor = mat[j][i]/v
+                mat[j][i] = 0
+                for k in range(i+1, n+1):
+                    mat[j][k] -= mat[i][k] * factor
+                    pass
+                pass
+
+            pass
+
+        solution = [0] * n
+
+        for i in range(0, n):
+            solution[i] = mat[i][n]/mat[i][i]
+
+        return solution
 
 
     def calibrate(self, target = 0.03):
@@ -99,74 +145,90 @@ class DC42Delta(Delta.Delta):
 
         # Collect probe points
         motor_points = []
+        zpoints = [0] * len(delta_points)
         initialSumOfSquares = 0
         for i in range(0, len(delta_points)):
             point = delta_points[i]
 
             self.move((point[0], point[1], 20.0))
-            zpoint = self.zprobe()
+            zpoints[i]= self.zprobe()
 
             # Convert from probe to nozzle position
-            pos = (point[0] - probe_offset[0], point[1] - probe_offset[1], 0.0)
+            pos = (point[0] - probe_offset[0], point[1] - probe_offset[1], 0)
 
             # Convert from delta to motor position
-            motor_points.append(self.delta_to_motor(pos))
+            motor = self.delta_to_motor(pos)
+            print "probe %.2f, %.2f => %.2f" % (point[0], point[1], zpoints[i])
 
-            initialSumOfSquares += math.pow(zpoint, 2)
+            motor_points.append(motor)
+            initialSumOfSquares += math.pow(zpoints[i], 2)
             pass
 
         # Do a Newton-Raphson iterations
 
         # Build a Nx7 matrix of derivatives
 
-        dMatrix = numpy.zeros((self.numPoints, self.numFactors))
+        dMatrix = [[0] * self.numPoints for _ in xrange(self.numFactors)]
         for i in range(0, len(delta_points)):
             for j in range(0, self.numFactors):
-                dMatrix[i, j] = self._derivative(j, motor_points[i])
+                dMatrix[i][j] = self._derivative(j, motor_points[i])
                 pass
             pass
 
-        print "dMatrix: ", dMatrix
+        #self._print_matrix("dMatrix:", dMatrix, self.numPoints, self.numFactors );
 
         # Build the equations = values
-        eMatrix = numpy.zeros((self.numFactors, self.numFactors))
-        vMatrix = numpy.zeros((self.numFactors))
+        nMatrix = [[0] * (self.numFactors + 1) for _ in xrange(self.numFactors)]
         for i in range(0, self.numFactors):
             for j in range(0, self.numFactors):
-                temp = dMatrix[0, i] * dMatrix[0, j]
+                temp = dMatrix[0][i] * dMatrix[0][j]
                 for k in range(1, len(delta_points)):
-                    temp += dMatrix[k, i] * dMatrix[k, j]
-                eMatrix[i, j] = temp
+                    temp += dMatrix[k][i] * dMatrix[k][j]
+                nMatrix[i][j] = temp
                 pass
 
-            temp = dMatrix[0, i]
-            for k in range(1, self.numPoints):
-                temp += dMatrix[k, i]
+            temp = 0
+            for k in range(0, self.numPoints):
+                temp += dMatrix[k][i] * -zpoints[k]
                 pass
-            vMatrix[i] = temp
+            nMatrix[i][self.numFactors] = temp
             pass
 
-        print "eMatrix: ", eMatrix
-        print "vMatrix: ", vMatrix
-        solution = numpy.linalg.solve(eMatrix, vMatrix)
-        print "Solution:", solution
+        #self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
+        solution = self._gauss_jordan(nMatrix, self.numFactors)
+
+        #self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
+
+        self._print_matrix("Solution:", [solution], 1, self.numFactors);
 
         # Apply solution to endstop trims
         eav = 0
         for i in range(0, 3):
             self.endstop[i] += solution[i]
-            print self.endstop[i]
             if i == 0 or self.endstop[i] < eav:
                 eav = self.endstop[i]
 
         # Adjust all the endstops
         for i in range(0, 3):
             self.endstop[i] -= eav
+            print "Endstop %c: %.2fmm" % (ord('X') + i, self.endstop[i])
 
-        self.radius += solution[3]
-        self.diagonal[0] += solution[4]
-        self.diagonal[1] += solution[5]
+        self.radius[0] += solution[3]
+        self.radius[1] += solution[3]
+        self.radius[2] += solution[3]
+        for i in range(0, 3):
+            print "Radius %c: %.2fmm" % (ord('A') + i, self.radius[i])
+
+        self.angle[0] += solution[4]
+        self.angle[1] += solution[5]
+        for i in range(0, 3):
+            print "Angle %c: %.2f deg" % (ord('A') + i, self.angle[i])
+
+        self.diagonal[0] += solution[6]
+        self.diagonal[1] += solution[6]
         self.diagonal[2] += solution[6]
+        for i in range(0, 3):
+            print "Diagonal Rod %c: %.2fmm" % (ord('A') + i, self.diagonal[i])
 
         self.recalc()
 
