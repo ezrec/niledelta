@@ -17,19 +17,20 @@
 import math
 import serial
 import time
+import sys
 
-import SmoothieDelta
+import DC42Delta
 
-def main():
-    port = serial.Serial(port="/dev/ttyUSB0", baudrate=250000,
+def main(port = "/dev/ttyUSB0", baudrate = 250000):
+    port = serial.Serial(port=port, baudrate=baudrate,
                          parity=serial.PARITY_NONE,
                          stopbits=serial.STOPBITS_ONE,
                          bytesize=serial.EIGHTBITS)
 
-    delta = DC42Delta(port)
+    delta = DC42Delta.DC42Delta(port)
 
     delta.calibrate()
 
 
-if __name__ == "__main__": main()
+if __name__ == "__main__": main(sys.argv[1], sys.argv[2])
 # vim: set shiftwidth=4 expandtab: 
