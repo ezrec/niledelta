@@ -31,15 +31,19 @@ class DC42Delta(Delta.Delta):
     #  0 - Endstop A trim
     #  1 - Endstop B trim
     #  2 - Endstop C trim
-    #  3 - Radius A/B/C
-    #  4 - Angle A
-    #  5 - Angle B
-    #  6 - Diagonal A/B/C
+    #  3 - Radius A
+    #  4 - Radius B
+    #  5 - Radius C
+    #  6 - Angle A
+    #  7 - Angle B
+    #  8 - Diagonal A
+    #  9 - Diagonal B # FIXME
+    # 10 - Diagonal C # FIXME
     #
-    # The assumption is that the bed is flat and horizontal, and
-    # that the tower angles are correct.
+    # The assumption is that the bed is flat,
+    # and that Angle C is correct.
     #
-    numFactors = 7
+    numFactors = 9
     numPoints = numFactors
 
     def __init__(self, gcode = None):
@@ -61,23 +65,27 @@ class DC42Delta(Delta.Delta):
             lo.endstop[2] -= perturb
         elif deriv == 3:
             hi.radius[0] += perturb
-            hi.radius[1] += perturb
-            hi.radius[2] += perturb
             lo.radius[0] -= perturb
-            lo.radius[1] -= perturb
-            lo.radius[2] -= perturb
         elif deriv == 4:
+            hi.radius[1] += perturb
+            lo.radius[1] -= perturb
+        elif deriv == 5:
+            hi.radius[2] += perturb
+            lo.radius[2] -= perturb
+        elif deriv == 6:
             hi.angle[0] += perturb
             lo.angle[0] -= perturb
-        elif deriv == 5:
+        elif deriv == 7:
             hi.angle[1] += perturb
             lo.angle[1] -= perturb
-        elif deriv == 6:
+        elif deriv == 8:
             hi.diagonal[0] += perturb
-            hi.diagonal[1] += perturb
-            hi.diagonal[2] += perturb
             lo.diagonal[0] -= perturb
+        # elif deriv == 9:
+            hi.diagonal[1] += perturb
             lo.diagonal[1] -= perturb
+        # elif deriv == 10:
+            hi.diagonal[2] += perturb
             lo.diagonal[2] -= perturb
             pass
 
@@ -175,7 +183,7 @@ class DC42Delta(Delta.Delta):
                 pass
             pass
 
-        #self._print_matrix("dMatrix:", dMatrix, self.numPoints, self.numFactors );
+        self._print_matrix("dMatrix:", dMatrix, self.numPoints, self.numFactors );
 
         # Build the equations = values
         nMatrix = [[0] * (self.numFactors + 1) for _ in xrange(self.numFactors)]
@@ -194,7 +202,7 @@ class DC42Delta(Delta.Delta):
             nMatrix[i][self.numFactors] = temp
             pass
 
-        #self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
+        self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
         solution = self._gauss_jordan(nMatrix, self.numFactors)
 
         #self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
@@ -213,21 +221,18 @@ class DC42Delta(Delta.Delta):
             self.endstop[i] -= eav
             print "Endstop %c: %.2fmm" % (ord('X') + i, self.endstop[i])
 
-        self.radius[0] += solution[3]
-        self.radius[1] += solution[3]
-        self.radius[2] += solution[3]
         for i in range(0, 3):
+            self.radius[i] += solution[3 + i]
             print "Radius %c: %.2fmm" % (ord('A') + i, self.radius[i])
 
-        self.angle[0] += solution[4]
-        self.angle[1] += solution[5]
-        for i in range(0, 3):
+        for i in range(0, 2):
+            self.angle[i] += solution[6 + i]
             print "Angle %c: %.2f deg" % (ord('A') + i, self.angle[i])
+        print "Angle C: %.2f deg" % (self.angle[2])
 
-        self.diagonal[0] += solution[6]
-        self.diagonal[1] += solution[6]
-        self.diagonal[2] += solution[6]
         for i in range(0, 3):
+            #self.diagonal[i] += solution[8 + i]
+            self.diagonal[i] += solution[8]
             print "Diagonal Rod %c: %.2fmm" % (ord('A') + i, self.diagonal[i])
 
         self.recalc()
