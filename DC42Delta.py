@@ -138,6 +138,21 @@ class DC42Delta(Delta.Delta):
 
         return solution
 
+    def _print_parms(self):
+        print "Bed Height: %.3fmm" % (self.bed_height)
+
+        # Adjust all the endstops
+        for i in range(0, 3):
+            print "Endstop %c: %.3fmm" % (ord('X') + i, self.endstop[i])
+
+        for i in range(0, 3):
+            print "Radius %c: %.3fmm" % (ord('A') + i, self.radius[i])
+
+        for i in range(0, 3):
+            print "Angle %c: %.3f deg" % (ord('A') + i, self.angle[i])
+
+        for i in range(0, 3):
+            print "Diagonal Rod %c: %.3fmm" % (ord('A') + i, self.diagonal[i])
 
     def calibrate(self, target = 0.03):
         delta_points = self.probe_points(self.numPoints)
@@ -222,9 +237,12 @@ class DC42Delta(Delta.Delta):
 
             self._print_matrix("Residuals:", [residuals], 1, self.numPoints)
 
-            if solution.count(0) == self.numFactors:
-                print "Calibrated - no corrections needed"
-                return True
+            if math.fabs(sum(solution)) < 0.1:
+                if attempt == 0:
+                    print "Calibrated - no corrections needed"
+                    return True
+                converged = True
+                break
 
             for i in range(0, self.numFactors):
                 if solution[i] > 20 or solution[i] < -20:
@@ -236,28 +254,19 @@ class DC42Delta(Delta.Delta):
                 self.endstop[i] += solution[i]
             eav = sum(self.endstop)/len(self.endstop)
             for i in range(0, 3):
-                print "Endstop %c: %.3fmm" % (ord('X') + i, self.endstop[i])
                 self.endstop[i] -= eav
 
             self.bed_height += eav
-            print "Bed Height: %.3fmm (%.3fmm)" % (self.bed_height, eav)
-
-            # Adjust all the endstops
-            for i in range(0, 3):
-                print "Endstop %c: %.3fmm (%.3fmm - %.3fmm)" % (ord('X') + i, self.endstop[i], eav, solution[i])
 
             for i in range(0, 3):
                 self.radius[i] += solution[3]
-                print "Radius %c: %.3fmm (%.3fmm)" % (ord('A') + i, self.radius[i], solution[3 + i])
 
             for i in range(0, 3):
                 if i != 2:
                     self.angle[i] += solution[4 + i]
-                print "Angle %c: %.3f deg" % (ord('A') + i, self.angle[i])
 
             for i in range(0, 3):
                 self.diagonal[i] += solution[6]
-                print "Diagonal Rod %c: %.3fmm (%.3fmm)" % (ord('A') + i, self.diagonal[i], solution[6])
 
             self.recalc()
 
@@ -266,12 +275,10 @@ class DC42Delta(Delta.Delta):
             sumOfSquares = 0
 
             for i in range(0, len(delta_points)):
-                print "[ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2]), 
                 for axis in range(0, 3):
                     motor_points[i][axis] += solution[axis]
 
                 newPosition = self.motor_to_delta(motor_points[i])
-                print "[ %.3f, %.3f, %.3f ] => [ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2], newPosition[0], newPosition[1], newPosition[2])
                 zCorrection[i] = newPosition[2]
                 expectedResiduals[i] = zPoints[i] + newPosition[2]
                 sumOfSquares += math.pow(expectedResiduals[i], 2)
@@ -279,8 +286,10 @@ class DC42Delta(Delta.Delta):
             expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
             self._print_matrix("Expected probe error:", [expectedResiduals], 1, self.numPoints)
 
-        #if converged:
-        #    # Update EEPROM
+        # Update EEPROM
+        if converged:
+            print "Converged solution found:"
+            self._print_parms()
         #    self.update()
 
         return converged
