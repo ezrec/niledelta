@@ -19,10 +19,9 @@ import time
 class GCode:
     """GCode Sender"""
     port = None
-    x = None
-    y = None
-    e = None
-    z = None
+    position = (0, 0, 0)
+    z_probe = 0
+    e = 0.0
     f = 4000
     eeprom = None
 
@@ -34,11 +33,12 @@ class GCode:
     def reset(self):
         if self.port is not None:
             self.port.setDTR(0)
-            time.sleep(1)
+            time.sleep(2)
             self.port.setDTR(1)
+            time.sleep(2)
             self.read("start") # Wait for start
+            self.read("wait")  # Wait for wait
 
-        self.home()
         pass
 
     def write(self, gcode):
@@ -47,24 +47,72 @@ class GCode:
         if len(gcode) == 0:
             return
 
-        self.ser.write(gcode + "\n")
+        self.port.write(gcode + "\n")
         self.read("ok")
+        self.read("wait")
         pass
 
-    def read(self, expected=None):
-        if self.port is None:
-            return self.fake_response
+    def _parse_EPR(self, line):
+        epr, rest = line.split(":",1)
+        etype, epos, val, name = rest.split(" ", 3)
+        self.eeprom[name] = (val, int(etype), int(epos))
 
-        response = []
+    def _parse_XYZE(self, report):
+        x = self.position[0]
+        y = self.position[1]
+        z = self.position[2]
+        z_probe = self.z_probe
+        e = self.e
+
+        for axis in report.split(" "):
+            av = axis.split(":")
+
+            if av[0] == "X":
+                x = float(av[1])
+                continue
+
+            if av[0] == "Y":
+                y = float(av[1])
+                continue
+
+            if av[0] == "Z":
+                z = float(av[1])
+                continue
+
+            if av[0] == "Z-probe":
+                z_probe = float(av[1])
+                continue
+
+            if av[0] == "E":
+                e = float(av[1])
+                continue
+            pass
+
+        self.position = (x, y, z)
+        self.e = e
+        self.z_probe = z_probe
+
+    def read(self, expected=None):
         while True:
             line = self.port.readline().strip()
+
             if expected is None:
                 return line
 
-            response.append(line)
+            if line.startswith(expected):
+                return line
 
-            if expected.lower() in line.lower():
-                return response
+            if line.startswith("EPR:"):
+                self._parse_EPR(line)
+                continue
+
+            if line.startswith("X:"):
+                self._parse_XYZE(line)
+                continue
+
+            if line.startswith("Z-probe:"):
+                self._parse_XYZE(line)
+                continue
 
             # Keep lookin...
             pass
@@ -72,21 +120,29 @@ class GCode:
 
     def move(self, point = None, e = None, f = None):
         """G1 move """
+
+        if point is None and e is None and f is None:
+            return
+
         if point is None:
-            point = self.position
+            point = self.position[:]
         if e is None:
             e = self.e
         if f is None:
             f = self.f
 
+        point = [point[0], point[1], point[2]]
+        for i in range(0,3):
+            if point[i] is None:
+                point[i] = self.position[i]
+
         if self.port is None:
-            self.position = point
+            self.position = point[:]
             self.e = e
             self.f = f
             return
 
-        self.write("G1 X%.2f Y%.2f Z%.2f E%.2f F%d" % (x, y, z, e, f))
-        self.read("ok")
+        self.write("G1 X%.2f Y%.2f Z%.2f E%.2f F%d" % (point[0], point[1], point[2], e, f))
         pass
 
     def home(self):
@@ -97,34 +153,7 @@ class GCode:
             return
 
         self.write("G28")
-        self.read("ok")
-
-        self.axis_report()
         pass
-
-    def _parse_axis_report(self, report):
-        x, y, z, e = self.x, self.y, self.z, self.e
-        for axis in report.split(" "):
-            av = axis.split(":")
-
-            if av[0].lower() is "x":
-                x = float(av[1])
-                continue
-
-            if av[0].lower() is "y":
-                y = float(av[1])
-                continue
-
-            if av[0].lower() is "z":
-                z = float(av[1])
-                continue
-
-            if av[0].lower() is "e":
-                e = float(av[1])
-                continue
-            pass
-
-        return x, y, z, e
 
     def axis_report(self):
         """M114 axis report"""
@@ -132,23 +161,30 @@ class GCode:
             return self.position + (self.e, self.f)
 
         self.write("M114")
-        pos = self._parse_axis_report(self.read("ok")[0])
 
-        self.position = pos[0:3]
-        self.e = pos[3]
         return self.position + (self.e, self.f)
 
-    def zprobe(self):
+    def zprobe(self, point = None, first = False, last = False):
         """G30 single-probe"""
         if self.port is None:
-            if self.position[0] == 0 and self.position[1] == 0:
-                return 0.5
+            probes = ( -0.98, -0.48, 0.77, 0.64, 0.26, -0.02, -0.81, -1.35, -0.93)
+            if point is not None:
+                z = probes[self.z_probe]
+                self.z_probe += 1
             else:
-                return 0.1
+                z = -1.23
+            return z
 
-        self.write("G30")
-        pos = self._parse_axis_report(self.read("ok")[0])
-        return pos[2]
+        p = 0
+        if first:
+            p |= 1
+        if last:
+            p |= 2
+
+        self.move(point)
+        self.write("G30 P%d" % (p))
+
+        return self.position[2] - self.z_probe
 
     # REPETIER
     def endstop_trim_clear(self):
@@ -165,19 +201,19 @@ class GCode:
         if self.port is None:
             return [1.1, 2.2, 3.3]
 
-        steps_per_mm = int(self.repetier_eeprom("Steps per mm"))
+        steps_per_mm = float(self.repetier_eeprom("Steps per mm"))
 
         old_trim = [0, 0, 0]
-        old_trim[0] = self.repetier_eeprom("Tower X endstop offset") / float(steps_per_mm)
-        old_trim[1] = self.repetier_eeprom("Tower Y endstop offset") / float(steps_per_mm)
-        old_trim[2] = self.repetier_eeprom("Tower Z endstop offset") / float(steps_per_mm)
+        old_trim[0] = float(self.repetier_eeprom("Tower X endstop offset [steps]")) / steps_per_mm
+        old_trim[1] = float(self.repetier_eeprom("Tower Y endstop offset [steps]")) / steps_per_mm
+        old_trim[2] = float(self.repetier_eeprom("Tower Z endstop offset [steps]")) / steps_per_mm
 
         if trim is None:
             return old_trim
 
-        self.repetier_eeprom("Tower X endstop offset", trim[0] * steps_per_mm)
-        self.repetier_eeprom("Tower Y endstop offset", trim[1] * steps_per_mm)
-        self.repetier_eeprom("Tower Z endstop offset", trim[2] * steps_per_mm)
+        self.repetier_eeprom("Tower X endstop offset [steps]", trim[0] * steps_per_mm)
+        self.repetier_eeprom("Tower Y endstop offset [steps]", trim[1] * steps_per_mm)
+        self.repetier_eeprom("Tower Z endstop offset [steps]", trim[2] * steps_per_mm)
 
         return old_trim
 
@@ -187,16 +223,16 @@ class GCode:
             return [100.0, 100.0, 100.0]
 
         dradius = None
-        dcorr = (None, None, None)
+        dcorr = [None] * 3
         if radius is not None:
             dradius = min(radius)
             for i in range(0, 3):
                 dcorr[i] = radius[i] - dradius
 
-        horiz_radius = float(self.repetier_eeprom("Horizontal radius", dradius))
-        a_radius = float(self.repetier_eeprom("Delta Radius A(0)", dcorr[0])) + horiz_radius
-        b_radius = float(self.repetier_eeprom("Delta Radius B(0)", dcorr[1])) + horiz_radius
-        c_radius = float(self.repetier_eeprom("Delta Radius C(0)", dcorr[2])) + horiz_radius
+        horiz_radius = float(self.repetier_eeprom("Horizontal radius [mm]", dradius))
+        a_radius = float(self.repetier_eeprom("Delta Radius A(0):", dcorr[0])) + horiz_radius
+        b_radius = float(self.repetier_eeprom("Delta Radius B(0):", dcorr[1])) + horiz_radius
+        c_radius = float(self.repetier_eeprom("Delta Radius C(0):", dcorr[2])) + horiz_radius
 
         return [a_radius, b_radius, c_radius]
 
@@ -206,17 +242,17 @@ class GCode:
             return [190.0, 190.0, 190.0]
 
         drod = None
-        dcorr = (None, None, None)
+        dcorr = [None] * 3
 
         if diagonal is not None:
             drod = min(diagonal)
             for i in range(0, 3):
                 dcorr[i] = diagonal[i] - drod
 
-        rod = float(self.repetier_eeprom("Diagonal rod length", drod))
-        a_rod = float(self.repetier_eeprom("Corr. diagonal A", dcorr[0])) + rod
-        b_rod = float(self.repetier_eeprom("Corr. diagonal B", dcorr[1])) + rod
-        c_rod = float(self.repetier_eeprom("Corr. diagonal C", dcorr[2])) + rod
+        rod = float(self.repetier_eeprom("Diagonal rod length [mm]", drod))
+        a_rod = float(self.repetier_eeprom("Corr. diagonal A [mm]", dcorr[0])) + rod
+        b_rod = float(self.repetier_eeprom("Corr. diagonal B [mm]", dcorr[1])) + rod
+        c_rod = float(self.repetier_eeprom("Corr. diagonal C [mm]", dcorr[2])) + rod
 
         return [a_rod, b_rod, c_rod]
 
@@ -225,25 +261,27 @@ class GCode:
         if self.port is None:
             return [210, 330, 90]
 
-        dangle = (None, None, None)
+        dangle = [None, None, None]
         for i in range(0, 3):
             if angle is not None:
-                dtower[i] = angle[i]
+                dangle[i] = angle[i]
 
-
-        a_angle = float(self.repetier_eeprom("Corr. diagonal A", dangle[0]))
-        b_angle = float(self.repetier_eeprom("Corr. diagonal B", dangle[1]))
-        c_angle = float(self.repetier_eeprom("Corr. diagonal C", dangle[2]))
+        a_angle = float(self.repetier_eeprom("Alpha A(210):", dangle[0]))
+        b_angle = float(self.repetier_eeprom("Alpha B(330):", dangle[1]))
+        c_angle = float(self.repetier_eeprom("Alpha C(90):", dangle[2]))
 
         return [a_angle, b_angle, c_angle]
 
 
     # REPETIER
-    def delta_bed(self, bed_radius = None):
+    def delta_bed(self, radius = None, height = None):
         if self.port is None:
-            return 90.0
+            return 90.0, 180.0
 
-        return float(self.repetier_eeprom("Max. radius", bed_radius))
+        old_radius = float(self.repetier_eeprom("Max. radius [mm]", radius))
+        old_height = float(self.repetier_eeprom("Z max length [mm]", height))
+
+        return old_radius, old_height
 
     # REPETIER
     def zprobe_offset(self, offset = None):
@@ -253,9 +291,9 @@ class GCode:
         if offset is None:
             offset = None, None, None
 
-        x = float(self.repetier_eeprom("Z-probe offset x", offset[0]))
-        y = float(self.repetier_eeprom("Z-probe offset y", offset[1]))
-        z = float(self.repetier_eeprom("Z-probe height", offset[2]))
+        x = float(self.repetier_eeprom("Z-probe offset x [mm]", offset[0]))
+        y = float(self.repetier_eeprom("Z-probe offset y [mm]", offset[1]))
+        z = float(self.repetier_eeprom("Z-probe height [mm]", offset[2]))
 
         return [x, y, z]
 
@@ -264,15 +302,8 @@ class GCode:
         if self.eeprom is None:
             # Fetch the EEPROM table
             self.eeprom = {}
-            self.gcode.write("M205")
-            for line in self.gcode.read("ok"):
-                if not "EPR:" in line:
-                    continue
-                epr, rest = line.split(":",2)
-                etype, epos, val, name = rest.split(" ", 4)
-                self.eeprom[name] = (val, etype, epos)
-                pass
-            pass
+            self.write("M205")
+
         eset = self.eeprom.get(key)
         if eset is None:
             return None
@@ -280,9 +311,9 @@ class GCode:
         val = eset[0]
         if value is not None:
             if eset[1] == 3:
-                self.gcode.write("M206 T%d P%d X%.3f" % (eset[1], eset[2], float(value)))
+                self.write("M206 T%d P%d X%.3f" % (eset[1], eset[2], float(value)))
             else:
-                self.gcode.write("M206 T%d P%d S%d" % (eset[1], eset[2], int(value)))
+                self.write("M206 T%d P%d S%d" % (eset[1], eset[2], int(value)))
             self.eeprom[key] = (value, eset[1], eset[2])
 
         return val

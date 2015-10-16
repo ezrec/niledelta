@@ -22,20 +22,23 @@ class Delta(GCode.GCode):
     """ Delta Machine """
     def __init__(self, port = None):
         GCode.GCode.__init__(self, port)
-        self.bed_radius = self.delta_bed()
+        self.bed_radius, self.bed_height = self.delta_bed()
         self.radius = self.delta_radius()
         self.diagonal = self.delta_diagonal()
         self.angle = self.delta_angle()
         self.endstop = self.endstop_trim()
+        self.bed_factor = 0.8
         self.recalc()
 
     def copy(self):
         delta = Delta(None)
         delta.bed_radius = self.bed_radius
+        delta.bed_height = self.bed_height
         delta.radius = self.radius[:]
         delta.diagonal = self.diagonal[:]
         delta.angle = self.angle[:]
         delta.endstop = self.endstop[:]
+        delta.bed_factor = self.bed_factor
         delta.recalc()
         return delta
 
@@ -45,6 +48,7 @@ class Delta(GCode.GCode):
         self.delta_radius(self.radius)
         self.delta_angle(self.angle)
         self.endstop_trim(self.endstop)
+        self.delta_bed(radius = None, height = self.bed_height)
 
     def recalc(self):
         # Get the positions of the 3 towers
@@ -63,16 +67,16 @@ class Delta(GCode.GCode):
         if count == 7:
             tower = [0] * 7
             for i in range(0,3):
-                px = math.cos(self.angle[i] * deg) * self.bed_radius * 0.9
-                py = math.sin(self.angle[i] * deg) * self.bed_radius * 0.9
+                px = math.cos(self.angle[i] * deg) * self.bed_radius * self.bed_factor
+                py = math.sin(self.angle[i] * deg) * self.bed_radius * self.bed_factor
                 tower[i] = (px, py)
             return tower[0], tower[1], tower[2], (0, 0), (-tower[0][0], -tower[0][1]), (-tower[1][0], -tower[1][1]), (-tower[2][0], -tower[2][1])
 
         # Make a circle around the bed, ending at the center.
         points = []
         for i in range(0, count-1):
-            x = math.cos(2*math.pi * i/(count-1)) * self.bed_radius * 0.9
-            y = math.sin(2*math.pi * i/(count-1)) * self.bed_radius * 0.9
+            x = math.cos(2*math.pi * i/(count-1)) * self.bed_radius * self.bed_factor
+            y = math.sin(2*math.pi * i/(count-1)) * self.bed_radius * self.bed_factor
             points.append((x, y))
         points.append((0, 0))
 
