@@ -100,8 +100,6 @@ class DC42Delta(Delta.Delta):
             print
             pass
 
-
-
     def _gauss_jordan(self, mat = [0], n = 0):
         for i in range(0,n):
             vmax = math.fabs(mat[i][i])
@@ -237,7 +235,7 @@ class DC42Delta(Delta.Delta):
 
             self._print_matrix("Residuals:", [residuals], 1, self.numPoints)
 
-            if math.fabs(sum(solution)) < 0.1:
+            if sum([math.fabs(x) for x in solution]) < 0.1:
                 if attempt == 0:
                     print "Calibrated - no corrections needed"
                     return True
