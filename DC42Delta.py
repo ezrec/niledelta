@@ -48,17 +48,19 @@ class DC42Delta(Delta.Delta):
     def _derivative(self, deriv = 0, pos = (0, 0, 0)):
         perturb = 0.2;
         hi = self.copy()
+        pos_hi = [pos[0], pos[1], pos[2]]
+        pos_lo = [pos[0], pos[1], pos[2]]
         lo = self.copy()
 
         if deriv == 0:
-            hi.endstop[0] -= perturb
-            lo.endstop[0] += perturb
+            pos_lo[0] -= perturb
+            pos_hi[0] += perturb
         if deriv == 1:
-            hi.endstop[1] -= perturb
-            lo.endstop[1] += perturb
+            pos_lo[1] -= perturb
+            pos_hi[1] += perturb
         if deriv == 2:
-            hi.endstop[2] -= perturb
-            lo.endstop[2] += perturb
+            pos_lo[2] -= perturb
+            pos_hi[2] += perturb
         if deriv == 3:
             hi.radius[0] += perturb
             lo.radius[0] -= perturb
@@ -84,8 +86,8 @@ class DC42Delta(Delta.Delta):
         hi.recalc()
         lo.recalc()
 
-        pos_hi = hi.motor_to_delta(pos)
-        pos_lo = lo.motor_to_delta(pos)
+        pos_hi = hi.motor_to_delta(pos_hi)
+        pos_lo = lo.motor_to_delta(pos_lo)
 
         return (pos_hi[2] - pos_lo[2])/(2 * perturb)
 
@@ -147,113 +149,140 @@ class DC42Delta(Delta.Delta):
 
         # Collect probe points
         motor_points = []
-        zpoints = [0] * len(delta_points)
-        zmin = self.bed_height
+        zPoints = [0] * len(delta_points)
         for i in range(0, len(delta_points)):
             point = delta_points[i]
 
-            zpoints[i] = self.zprobe((point[0], point[1], None))
-            print "probe %.2f, %.2f => %.2f" % (point[0], point[1], zpoints[i])
-            if zpoints[i] < zmin:
-                zmin = zpoints[i]
+            zPoints[i] = self.zprobe((point[0], point[1], None))
 
-        self.bed_height -= zmin
         self.zprobe(None, last = True)
 
         initialSumOfSquares = 0
         for i in range(0, len(delta_points)):
             point = delta_points[i]
 
-            #zpoints[i] -= zmin
-
             # Convert from probe to nozzle position
             pos = (point[0] - probe_offset[0], point[1] - probe_offset[1], 0)
 
             # Convert from delta to motor position
             motor = self.delta_to_motor(pos)
+            print "probe %.2f, %.2f, [%.2f] => %.2f, %.2f, %.2f" % (point[0], point[1], zPoints[i], motor[0], motor[1], motor[2])
 
             motor_points.append(motor)
-            initialSumOfSquares += math.pow(zpoints[i], 2)
+            initialSumOfSquares += math.pow(zPoints[i], 2)
             pass
 
-        # Do a Newton-Raphson iterations
+        # Do Newton-Raphson iterations until we converge (or fail to converge)
+        converged = False
+        zCorrection = [0] * self.numPoints
 
-        # Build a Nx7 matrix of derivatives
+        for attempt in range(0, 4):
+            # Build a Nx7 matrix of derivatives
 
-        dMatrix = [[0] * self.numFactors for _ in xrange(self.numPoints)]
-        for i in range(0, len(delta_points)):
-            for j in range(0, self.numFactors):
-                dMatrix[i][j] = self._derivative(j, motor_points[i])
-                pass
-            pass
-
-        self._print_matrix("dMatrix:", dMatrix, self.numPoints, self.numFactors );
-
-        # Build the equations = values
-        nMatrix = [[0] * (self.numFactors + 1) for _ in xrange(self.numFactors)]
-        for i in range(0, self.numFactors):
-            for j in range(0, self.numFactors):
-                temp = dMatrix[0][i] * dMatrix[0][j]
-                for k in range(1, len(delta_points)):
-                    temp += dMatrix[k][i] * dMatrix[k][j]
-                nMatrix[i][j] = temp
+            dMatrix = [[0] * self.numFactors for _ in xrange(self.numPoints)]
+            for i in range(0, len(delta_points)):
+                for j in range(0, self.numFactors):
+                    dMatrix[i][j] = self._derivative(j, motor_points[i])
+                    pass
                 pass
 
-            temp = 0
-            for k in range(0, self.numPoints):
-                temp += dMatrix[k][i] * -zpoints[k]
+            self._print_matrix("dMatrix:", dMatrix, self.numPoints, self.numFactors );
+
+            # Build the equations = values
+            nMatrix = [[0] * (self.numFactors + 1) for _ in xrange(self.numFactors)]
+            for i in range(0, self.numFactors):
+                for j in range(0, self.numFactors):
+                    temp = dMatrix[0][i] * dMatrix[0][j]
+                    for k in range(1, len(delta_points)):
+                        temp += dMatrix[k][i] * dMatrix[k][j]
+                    nMatrix[i][j] = temp
+                    pass
+
+                temp = 0
+                for k in range(0, self.numPoints):
+                    temp += dMatrix[k][i] * -(zPoints[k] + zCorrection[k])
+                    pass
+                nMatrix[i][self.numFactors] = temp
                 pass
-            nMatrix[i][self.numFactors] = temp
-            pass
 
-        self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
-        solution = self._gauss_jordan(nMatrix, self.numFactors)
-        self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
+            self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
+            solution = self._gauss_jordan(nMatrix, self.numFactors)
+            self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
 
-        #self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
+            #self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
 
-        self._print_matrix("Solution:", [solution], 1, self.numFactors);
+            self._print_matrix("Solution:", [solution], 1, self.numFactors);
 
-        if solution.count(0) == self.numFactors:
-            print "Calibrated - no corrections needed"
-            return True
+            # Determine the residuals
+            residuals = [0] * self.numPoints
+            for i in range(0, len(delta_points)):
+                residuals[i] = zPoints[i]
+                for j in range(0, self.numFactors):
+                    residuals[i] += solution[j] * dMatrix[i][j]
 
-        for i in range(0, self.numFactors):
-            if solution[i] > 20 or solution[i] < -20:
-                print "BOGUS SOLUTION"
-                return False
+            self._print_matrix("Residuals:", [residuals], 1, self.numPoints)
 
-        # Apply solution to endstop trims
-        eav = 0
-        for i in range(0, 3):
-            self.endstop[i] += solution[i]
-            if i == 0 or self.endstop[i] < eav:
-                eav = self.endstop[i]
+            if solution.count(0) == self.numFactors:
+                print "Calibrated - no corrections needed"
+                return True
 
-        self.bed_height -= eav
-        print "Bed Height: %.3fmm (%.3fmm)" % (self.bed_height, -zmin - eav)
+            for i in range(0, self.numFactors):
+                if solution[i] > 20 or solution[i] < -20:
+                    print "BOGUS SOLUTION"
+                    break
 
-        # Adjust all the endstops
-        for i in range(0, 3):
-            self.endstop[i] -= eav
-            print "Endstop %c: %.3fmm (%.3fmm)" % (ord('X') + i, self.endstop[i], solution[i] - eav)
+            # Apply solution to endstop trims
+            for i in range(0, 3):
+                self.endstop[i] += solution[i]
+            eav = sum(self.endstop)/len(self.endstop)
+            for i in range(0, 3):
+                print "Endstop %c: %.3fmm" % (ord('X') + i, self.endstop[i])
+                self.endstop[i] -= eav
 
-        for i in range(0, 3):
-            self.radius[i] += solution[3 + i]
-            print "Radius %c: %.3fmm (%.3fmm)" % (ord('A') + i, self.radius[i], solution[3 + i])
+            self.bed_height += eav
+            print "Bed Height: %.3fmm (%.3fmm)" % (self.bed_height, eav)
 
-        for i in range(0, 3):
-            print "Angle %c: %.3f deg" % (ord('A') + i, self.angle[i])
+            # Adjust all the endstops
+            for i in range(0, 3):
+                print "Endstop %c: %.3fmm (%.3fmm - %.3fmm)" % (ord('X') + i, self.endstop[i], eav, solution[i])
 
-        for i in range(0, 3):
-            self.diagonal[i] += solution[6]
-            print "Diagonal Rod %c: %.3fmm (%.3fmm)" % (ord('A') + i, self.diagonal[i], solution[6])
+            for i in range(0, 3):
+                self.radius[i] += solution[3]
+                print "Radius %c: %.3fmm (%.3fmm)" % (ord('A') + i, self.radius[i], solution[3 + i])
 
-        self.recalc()
+            for i in range(0, 3):
+                if i != 2:
+                    self.angle[i] += solution[4 + i]
+                print "Angle %c: %.3f deg" % (ord('A') + i, self.angle[i])
 
-        # Update EEPROM
-        #self.update()
+            for i in range(0, 3):
+                self.diagonal[i] += solution[6]
+                print "Diagonal Rod %c: %.3fmm (%.3fmm)" % (ord('A') + i, self.diagonal[i], solution[6])
 
-        return True
+            self.recalc()
+
+            # Calculate the expected probe heights with this new set of adjustments
+            expectedResiduals = [0] * self.numPoints
+            sumOfSquares = 0
+
+            for i in range(0, len(delta_points)):
+                print "[ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2]), 
+                for axis in range(0, 3):
+                    motor_points[i][axis] += solution[axis]
+
+                newPosition = self.motor_to_delta(motor_points[i])
+                print "[ %.3f, %.3f, %.3f ] => [ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2], newPosition[0], newPosition[1], newPosition[2])
+                zCorrection[i] = newPosition[2]
+                expectedResiduals[i] = zPoints[i] + newPosition[2]
+                sumOfSquares += math.pow(expectedResiduals[i], 2)
+
+            expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
+            self._print_matrix("Expected probe error:", [expectedResiduals], 1, self.numPoints)
+
+        #if converged:
+        #    # Update EEPROM
+        #    self.update()
+
+        return converged
 
 # vim: set shiftwidth=4 expandtab: 
