@@ -251,7 +251,7 @@ class DC42Delta(Delta.Delta):
         if converged:
             print "Converged solution found:"
             self._print_parms()
-        #    self.update()
+            self.update()
 
         return converged
 

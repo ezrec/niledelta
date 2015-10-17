@@ -16,6 +16,26 @@
 import serial
 import time
 
+repetier_eeprom = {
+                "Horizontal radius [mm]": 100.0,
+                "Delta Radius A(0):": 0.0,
+                "Delta Radius B(0):": 0.0,
+                "Delta Radius C(0):": 0.0,
+                "Steps per mm": 80,
+                "Tower X endstop offset [steps]": 0,
+                "Tower Y endstop offset [steps]": 0,
+                "Tower Z endstop offset [steps]": 0,
+                "Diagonal rod length [mm]": 190.0,
+                "Corr. diagonal A [mm]": 0.0,
+                "Corr. diagonal B [mm]": 0.0,
+                "Corr. diagonal C [mm]": 0.0,
+                "Alpha A(210):": 210,
+                "Alpha B(330):": 330,
+                "Alpha C(90):": 90,
+                "Max. radius [mm]": 90,
+                "Z max length [mm]": 190,
+                }
+
 class GCode:
     """GCode Sender"""
     port = None
@@ -31,6 +51,7 @@ class GCode:
         pass
 
     def reset(self):
+        self.eeprom = None
         if self.port is not None:
             self.port.setDTR(0)
             time.sleep(2)
@@ -198,9 +219,6 @@ class GCode:
 
     # REPETIER
     def endstop_trim(self, trim = None):
-        if self.port is None:
-            return [1.1, 2.2, 3.3]
-
         steps_per_mm = float(self.repetier_eeprom("Steps per mm"))
 
         old_trim = [0, 0, 0]
@@ -219,9 +237,6 @@ class GCode:
 
     # REPETIER
     def delta_radius(self, radius = None):
-        if self.port is None:
-            return [100.0, 100.0, 100.0]
-
         dradius = None
         dcorr = [None] * 3
         if radius is not None:
@@ -238,9 +253,6 @@ class GCode:
 
     # REPETIER
     def delta_diagonal(self, diagonal = None):
-        if self.port is None:
-            return [190.0, 190.0, 190.0]
-
         drod = None
         dcorr = [None] * 3
 
@@ -258,9 +270,6 @@ class GCode:
 
     # REPETIER
     def delta_angle(self, angle = None):
-        if self.port is None:
-            return [210, 330, 90]
-
         dangle = [None, None, None]
         for i in range(0, 3):
             if angle is not None:
@@ -275,9 +284,6 @@ class GCode:
 
     # REPETIER
     def delta_bed(self, radius = None, height = None):
-        if self.port is None:
-            return 90.0, 180.0
-
         old_radius = float(self.repetier_eeprom("Max. radius [mm]", radius))
         old_height = float(self.repetier_eeprom("Z max length [mm]", height))
 
@@ -299,6 +305,15 @@ class GCode:
 
     # REPETIER
     def repetier_eeprom(self, key, value = None):
+        if self.port is None:
+            if self.eeprom is None:
+                self.eeprom = repetier_eeprom.copy()
+            val = self.eeprom[key]
+            if value is not None:
+                self.eeprom[key] = value
+                print "EPR: %s %.3f" % (key, value)
+            return val
+
         if self.eeprom is None:
             # Fetch the EEPROM table
             self.eeprom = {}
