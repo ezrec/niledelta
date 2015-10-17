@@ -28,66 +28,51 @@ class DC42Delta(Delta.Delta):
     """ DC42Delta Calibrator """
 
     # Solve for the following factors:
-    #  0 - Endstop A trim
-    #  1 - Endstop B trim
-    #  2 - Endstop C trim
+    #  0 - Endstop A
+    #  1 - Endstop B
+    #  2 - Endstop C
     #  3 - Radius A
     #  4 - Radius B
     #  5 - Radius C
     #  6 - Diagonal A/B/C
     #
     # The assumption is that the bed is flat,
-    # and that Angle C is correct.
+    # and that Angles A/B/C are correct.
     #
-    numFactors = 7
+    numFactors =7
     numPoints = 9
 
     def __init__(self, gcode = None):
         Delta.Delta.__init__(self, gcode)
 
+    def _apply_factor(self, factor = [0] * numFactors, delta = None):
+        if delta is None:
+            delta = self
+        for i in range(0,len(factor)):
+            if i in range(0,3):
+                delta.endstop[i] += factor[i]
+            elif i in range(3,6):
+                delta.radius[i-3] += factor[i]
+            elif i == 6:
+                delta.diagonal[0] += factor[i]
+                delta.diagonal[1] += factor[i]
+                delta.diagonal[2] += factor[i]
+        delta.recalc()
+
     def _derivative(self, deriv = 0, pos = (0, 0, 0)):
         perturb = 0.2;
         hi = self.copy()
-        pos_hi = [pos[0], pos[1], pos[2]]
-        pos_lo = [pos[0], pos[1], pos[2]]
         lo = self.copy()
+        factor = [0] * self.numFactors
 
-        if deriv == 0:
-            pos_lo[0] -= perturb
-            pos_hi[0] += perturb
-        if deriv == 1:
-            pos_lo[1] -= perturb
-            pos_hi[1] += perturb
-        if deriv == 2:
-            pos_lo[2] -= perturb
-            pos_hi[2] += perturb
-        if deriv == 3:
-            hi.radius[0] += perturb
-            lo.radius[0] -= perturb
-            hi.radius[1] += perturb
-            lo.radius[1] -= perturb
-            hi.radius[2] += perturb
-            lo.radius[2] -= perturb
-        if deriv == 4:
-            hi.angle[0] += perturb
-            lo.angle[0] -= perturb
-        if deriv == 5:
-            hi.angle[1] += perturb
-            lo.angle[1] -= perturb
-        if deriv == 6:
-            hi.diagonal[0] += perturb
-            lo.diagonal[0] -= perturb
-            hi.diagonal[1] += perturb
-            lo.diagonal[1] -= perturb
-            hi.diagonal[2] += perturb
-            lo.diagonal[2] -= perturb
-            pass
+        factor[deriv] = perturb
+        self._apply_factor(factor = factor, delta = hi)
 
-        hi.recalc()
-        lo.recalc()
+        factor[deriv] = -perturb
+        self._apply_factor(factor = factor, delta = lo)
 
-        pos_hi = hi.motor_to_delta(pos_hi)
-        pos_lo = lo.motor_to_delta(pos_lo)
+        pos_hi = hi.motor_to_delta(pos)
+        pos_lo = lo.motor_to_delta(pos)
 
         return (pos_hi[2] - pos_lo[2])/(2 * perturb)
 
@@ -247,35 +232,13 @@ class DC42Delta(Delta.Delta):
                     print "BOGUS SOLUTION"
                     break
 
-            # Apply solution to endstop trims
-            for i in range(0, 3):
-                self.endstop[i] += solution[i]
-            eav = sum(self.endstop)/len(self.endstop)
-            for i in range(0, 3):
-                self.endstop[i] -= eav
-
-            self.bed_height += eav
-
-            for i in range(0, 3):
-                self.radius[i] += solution[3]
-
-            for i in range(0, 3):
-                if i != 2:
-                    self.angle[i] += solution[4 + i]
-
-            for i in range(0, 3):
-                self.diagonal[i] += solution[6]
-
-            self.recalc()
+            self._apply_factor(solution)
 
             # Calculate the expected probe heights with this new set of adjustments
             expectedResiduals = [0] * self.numPoints
             sumOfSquares = 0
 
             for i in range(0, len(delta_points)):
-                for axis in range(0, 3):
-                    motor_points[i][axis] += solution[axis]
-
                 newPosition = self.motor_to_delta(motor_points[i])
                 zCorrection[i] = newPosition[2]
                 expectedResiduals[i] = zPoints[i] + newPosition[2]
