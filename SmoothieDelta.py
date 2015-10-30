@@ -19,12 +19,10 @@ import time
 import GCode
 import Delta
 
-class SmoothieDelta:
+class SmoothieDelta(Delta.Delta):
     """ SmootheDelta Calibrator """
-    def __init__(self, gcode = None, radius = 100):
-        Delta.__init__(self, gcode, radius)
-        self.radius = radius
-        self = gcode
+    def __init__(self, gcode = None):
+        Delta.Delta.__init__(self, gcode)
 
     def calibrate_endstops(self, target = 0.03):
         """ Run the endstop calibration """
@@ -50,16 +48,16 @@ class SmoothieDelta:
         # Probe up to 10 times...
         for i in range(0,10):
             # Set trim
-            self.endstop_trim(trim[0], trim[1], trim[2])
+            self.endstop_trim([trim[0], trim[1], trim[2]])
 
             # Home
             self.home()
 
             # Get the Z at the base of the 3 towers
-            tower_z = []
-            for point in probe[0:3]:
-                self.move(x = point[0], y = point[1], z = 20)
-                tower_z.append(self.zprobe())
+            tower_z = [0] * 3
+            for i in range(0, 3):
+                point = points[i]
+                tower_z[i] = self.zprobe((point[0], point[1], 20))
                 pass
 
             trimscale = 1.2522 # Emperically determined
@@ -100,8 +98,7 @@ class SmoothieDelta:
             # Probe the three towers, and average
             zsum = 0
             for t in range(0, 3):
-                self.move(x=points[t][0], y=points[t][1], z=20)
-                zsum += self.zprobe()
+                zsum += self.zprobe((pints[t][0], points[t][1], 20))
 
             m = zsum/3.0
             d = cmm - m

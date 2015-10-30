@@ -18,22 +18,22 @@ import time
 
 repetier_eeprom = {
                 "Horizontal radius [mm]": 100.0,
-                "Delta Radius A(0):": 0.0,
-                "Delta Radius B(0):": 0.0,
-                "Delta Radius C(0):": 0.0,
+                "Delta Radius A(0):": 1.0,
+                "Delta Radius B(0):": 0.5,
+                "Delta Radius C(0):": 1.0,
                 "Steps per mm": 80,
                 "Tower X endstop offset [steps]": 0,
-                "Tower Y endstop offset [steps]": 0,
-                "Tower Z endstop offset [steps]": 0,
-                "Diagonal rod length [mm]": 190.0,
-                "Corr. diagonal A [mm]": 0.0,
-                "Corr. diagonal B [mm]": 0.0,
-                "Corr. diagonal C [mm]": 0.0,
+                "Tower Y endstop offset [steps]": 66,
+                "Tower Z endstop offset [steps]": 34,
+                "Diagonal rod length [mm]": 196.0,
                 "Alpha A(210):": 210,
                 "Alpha B(330):": 330,
                 "Alpha C(90):": 90,
+                "Corr. diagonal A [mm]": 0.0,
+                "Corr. diagonal B [mm]": 0.0,
+                "Corr. diagonal C [mm]": 0.0,
                 "Max. radius [mm]": 90,
-                "Z max length [mm]": 190,
+                "Z max length [mm]": 171.25,
                 }
 
 class GCode:
@@ -188,7 +188,9 @@ class GCode:
     def zprobe(self, point = None, first = False, last = False):
         """G30 single-probe"""
         if self.port is None:
-            probes = ( -0.98, -0.48, 0.77, 0.64, 0.26, -0.02, -0.81, -1.35, -0.93)
+            probes = (  0.02, 0.25, 0.80, 1.27,
+                        1.28, 0.96, 0.87, 0.88,
+                        0.60, 0.33, 0.12, 0.00, 0.33 )
             if point is not None:
                 z = probes[self.z_probe]
                 self.z_probe += 1
@@ -218,8 +220,12 @@ class GCode:
         pass
 
     # REPETIER
+    def steps_per_mm(self, steps = None):
+        return float(self.repetier_eeprom("Steps per mm", steps))
+
+    # REPETIER
     def endstop_trim(self, trim = None):
-        steps_per_mm = float(self.repetier_eeprom("Steps per mm"))
+        steps_per_mm = self.steps_per_mm()
 
         old_trim = [0, 0, 0]
         old_trim[0] = float(self.repetier_eeprom("Tower X endstop offset [steps]")) / steps_per_mm

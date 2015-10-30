@@ -60,6 +60,19 @@ class Delta(GCode.GCode):
             py = math.sin(self.angle[i] * deg) * self.radius[i]
             self.tower[i] = (px, py)
 
+        # Adjust the endstops
+        minstop = min(self.endstop)
+        for i in range(0, 3):
+            self.endstop[i] -= minstop
+
+        self.bed_height -= minstop
+
+    def plot_points(self, points):
+        f = open("plot.plt", "w+")
+        for point in points:
+            f.write("%.3f %.3f %.3f\n" % (point[0], point[1], point[2]));
+        f.close()
+
     def probe_points(self, count = 7):
         deg = math.pi/180.0
 
@@ -82,12 +95,34 @@ class Delta(GCode.GCode):
 
         return points
 
+    def delta_probe(self, points = 7):
+        probe_points = self.probe_points(self.numPoints)
+        probe_offset = self.zprobe_offset()
+
+        self.home()
+        self.move((0, 0, 20))
+        self.zprobe(None, first = True)
+
+        # Collect probe points
+        delta_points = [[x[0], x[1], 0] for x in probe_points]
+        for point in delta_points:
+            point[2] = self.zprobe((point[0], point[1], None))
+            # Convert from probe to nozzle
+            point[0] -= probe_offset[0]
+            point[1] -= probe_offset[1]
+
+        self.zprobe(None, last = True)
+
+        self.plot_points(delta_points)
+
+        return delta_points
 
     def delta_to_motor(self, point = (0, 0, 0)):
         motor = [0, 0, 0]
+        z = self.bed_height - point[2]
         for i in range(0, 3):
             D2 = math.pow(self.diagonal[i], 2)
-            motor[i] = point[2] + math.sqrt(D2 - math.pow(point[0] - self.tower[i][0], 2) - math.pow(point[1] - self.tower[i][1], 2))
+            motor[i] = z + math.sqrt(D2 - math.pow(point[0] - self.tower[i][0], 2) - math.pow(point[1] - self.tower[i][1], 2))
             motor[i] += self.endstop[i]
 
         return motor
@@ -132,6 +167,6 @@ class Delta(GCode.GCode):
         x = (U * z - S) / Q
         y = (P - R * z) / Q
 
-        return (x, y, z)
+        return (x, y, self.bed_height - z)
 
 # vim: set shiftwidth=4 expandtab: #

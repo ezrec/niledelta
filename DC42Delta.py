@@ -40,23 +40,37 @@ class DC42Delta(Delta.Delta):
     # and that Angles A/B/C are correct.
     #
     numFactors =7
-    numPoints = 9
+    numPoints = 13
 
     def __init__(self, gcode = None):
         Delta.Delta.__init__(self, gcode)
 
+    def _apply_value(self, delta = None, index = None, value = None):
+        if index in range(0, 3):
+            delta.radius[index] += value
+            return
+        index -= 3
+
+        if index == 0:
+            for i in range(0,3):
+                delta.diagonal[i + index] += value
+            return
+        index -= 1
+
+        if index in range(0, 3):
+            delta.endstop[index] += value
+            return
+        index -= 3
+
+        return 0
+
     def _apply_factor(self, factor = [0] * numFactors, delta = None):
         if delta is None:
             delta = self
-        for i in range(0,len(factor)):
-            if i in range(0,3):
-                delta.endstop[i] += factor[i]
-            elif i in range(3,6):
-                delta.radius[i-3] += factor[i]
-            elif i == 6:
-                delta.diagonal[0] += factor[i]
-                delta.diagonal[1] += factor[i]
-                delta.diagonal[2] += factor[i]
+
+        for i in range(0, len(factor)):
+            self._apply_value(delta, i, factor[i])
+
         delta.recalc()
 
     def _derivative(self, deriv = 0, pos = (0, 0, 0)):
@@ -126,7 +140,7 @@ class DC42Delta(Delta.Delta):
 
         # Adjust all the endstops
         for i in range(0, 3):
-            print "Endstop %c: %.3fmm" % (ord('X') + i, self.endstop[i])
+            print "Endstop %c: %.3fmm (%d steps)" % (ord('X') + i, self.endstop[i], self.endstop[i] * self.steps_per_mm())
 
         for i in range(0, 3):
             print "Radius %c: %.3fmm" % (ord('A') + i, self.radius[i])
@@ -138,43 +152,33 @@ class DC42Delta(Delta.Delta):
             print "Diagonal Rod %c: %.3fmm" % (ord('A') + i, self.diagonal[i])
 
     def calibrate(self, target = 0.03):
-        delta_points = self.probe_points(self.numPoints)
-        probe_offset = self.zprobe_offset()
-
-        self.home()
-        self.move((0, 0, 20))
-        self.zprobe(None, first = True)
+        delta_points = self.delta_probe(self.numPoints)
 
         # Collect probe points
         motor_points = []
-        zPoints = [0] * len(delta_points)
-        for i in range(0, len(delta_points)):
-            point = delta_points[i]
+        zmin = min([x[2] for x in delta_points])
 
-            zPoints[i] = self.zprobe((point[0], point[1], None))
-
-        self.zprobe(None, last = True)
+        # Adjust bed height such that all points are above 0
+        self.bed_height += zmin
 
         initialSumOfSquares = 0
         for i in range(0, len(delta_points)):
             point = delta_points[i]
-
-            # Convert from probe to nozzle position
-            pos = (point[0] - probe_offset[0], point[1] - probe_offset[1], 0)
+            point[2] -= zmin
 
             # Convert from delta to motor position
-            motor = self.delta_to_motor(pos)
-            print "probe %.2f, %.2f, [%.2f] => %.2f, %.2f, %.2f" % (point[0], point[1], zPoints[i], motor[0], motor[1], motor[2])
+            motor = self.delta_to_motor(point)
+            print "probe %.2f, %.2f, [%.2f] => %.2f, %.2f, %.2f" % (point[0], point[1], point[2], motor[0], motor[1], motor[2])
 
             motor_points.append(motor)
-            initialSumOfSquares += math.pow(zPoints[i], 2)
+            initialSumOfSquares += math.pow(point[2], 2)
             pass
 
         # Do Newton-Raphson iterations until we converge (or fail to converge)
         converged = False
         zCorrection = [0] * self.numPoints
 
-        for attempt in range(0, 4):
+        for attempt in range(0, 2):
             # Build a Nx7 matrix of derivatives
 
             dMatrix = [[0] * self.numFactors for _ in xrange(self.numPoints)]
@@ -198,7 +202,7 @@ class DC42Delta(Delta.Delta):
 
                 temp = 0
                 for k in range(0, self.numPoints):
-                    temp += dMatrix[k][i] * -(zPoints[k] + zCorrection[k])
+                    temp += dMatrix[k][i] * -(delta_points[k][2] + zCorrection[k])
                     pass
                 nMatrix[i][self.numFactors] = temp
                 pass
@@ -214,18 +218,11 @@ class DC42Delta(Delta.Delta):
             # Determine the residuals
             residuals = [0] * self.numPoints
             for i in range(0, len(delta_points)):
-                residuals[i] = zPoints[i]
+                residuals[i] = delta_points[i][2]
                 for j in range(0, self.numFactors):
                     residuals[i] += solution[j] * dMatrix[i][j]
 
             self._print_matrix("Residuals:", [residuals], 1, self.numPoints)
-
-            if sum([math.fabs(x) for x in solution]) < 0.1:
-                if attempt == 0:
-                    print "Calibrated - no corrections needed"
-                    return True
-                converged = True
-                break
 
             for i in range(0, self.numFactors):
                 if solution[i] > 20 or solution[i] < -20:
@@ -241,17 +238,23 @@ class DC42Delta(Delta.Delta):
             for i in range(0, len(delta_points)):
                 newPosition = self.motor_to_delta(motor_points[i])
                 zCorrection[i] = newPosition[2]
-                expectedResiduals[i] = zPoints[i] + newPosition[2]
+                expectedResiduals[i] = delta_points[i][2] + newPosition[2]
                 sumOfSquares += math.pow(expectedResiduals[i], 2)
 
             expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
-            self._print_matrix("Expected probe error:", [expectedResiduals], 1, self.numPoints)
+            self._print_matrix("Expected probe error %.3f:" % (expectedRmsError), [expectedResiduals], 1, self.numPoints)
+            if expectedRmsError < 0.2:
+                if attempt == 0:
+                    print "Calibrated - no corrections needed"
+                    return True
+                converged = True
+                break
+
 
         # Update EEPROM
         if converged:
             print "Converged solution found:"
             self._print_parms()
-            self.update()
 
         return converged
 
