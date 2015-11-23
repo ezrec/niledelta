@@ -140,11 +140,10 @@ class Delta(GCode.GCode):
 
     def delta_to_motor(self, point = (0, 0, 0)):
         motor = [0, 0, 0]
-        z = self.bed_height - point[2]
+        z = point[2]
         for i in range(0, 3):
             D2 = math.pow(self.diagonal[i], 2)
             motor[i] = z + math.sqrt(D2 - math.pow(point[0] - self.tower[i][0], 2) - math.pow(point[1] - self.tower[i][1], 2))
-            motor[i] += self.endstop[i]
 
         return motor
 
@@ -153,7 +152,6 @@ class Delta(GCode.GCode):
         F = [0, 0, 0]
         motor = pos[:]
         for i in range(0, 3):
-            motor[i] -= self.endstop[i]
             coreF[i] = math.pow(self.tower[i][0], 2) + math.pow(self.tower[i][1], 2)
             F[i] = coreF[i] + math.pow(motor[i], 2)
             pass
@@ -188,6 +186,6 @@ class Delta(GCode.GCode):
         x = (U * z - S) / Q
         y = (P - R * z) / Q
 
-        return (x, y, self.bed_height - z)
+        return (x, y, z)
 
 # vim: set shiftwidth=4 expandtab: #

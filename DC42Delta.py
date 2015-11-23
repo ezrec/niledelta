@@ -34,12 +34,12 @@ class DC42Delta(Delta.Delta):
     #  3 - Radius A
     #  4 - Radius B
     #  5 - Radius C
-    #  6 - Diagonal A/B/C
     #
     # The assumption is that the bed is flat,
+    # the diaganoal rod length is corroect,
     # and that Angles A/B/C are correct.
     #
-    numFactors =7
+    numFactors = 4
     numPoints = 13
 
     def __init__(self, gcode = None):
@@ -47,22 +47,21 @@ class DC42Delta(Delta.Delta):
 
     def _apply_value(self, delta = None, index = None, value = None):
         if index in range(0, 3):
-            delta.radius[index] += value
-            return
-        index -= 3
-
-        if index == 0:
-            for i in range(0,3):
-                delta.diagonal[i + index] += value
-            return
-        index -= 1
-
-        if index in range(0, 3):
             delta.endstop[index] += value
             return
         index -= 3
 
-        return 0
+        if index == 0:
+            for i in range(0, 3):
+                delta.radius[i] += value
+            return
+
+        if index in range(0, 3):
+            delta.radius[index] += value
+            return
+        index -= 3
+
+        return
 
     def _apply_factor(self, factor = [0] * numFactors, delta = None):
         if delta is None:
@@ -85,8 +84,14 @@ class DC42Delta(Delta.Delta):
         factor[deriv] = -perturb
         self._apply_factor(factor = factor, delta = lo)
 
-        pos_hi = hi.motor_to_delta(pos)
-        pos_lo = lo.motor_to_delta(pos)
+        pos_hi = [pos[0], pos[1], pos[2]]
+        pos_lo = [pos[0], pos[1], pos[2]]
+        if deriv < 3:
+            pos_hi[deriv] += perturb
+            pos_lo[deriv] -= perturb
+
+        pos_hi = hi.motor_to_delta(pos_hi)
+        pos_lo = lo.motor_to_delta(pos_lo)
 
         return (pos_hi[2] - pos_lo[2])/(2 * perturb)
 
@@ -133,6 +138,8 @@ class DC42Delta(Delta.Delta):
         for i in range(0, n):
             solution[i] = mat[i][n]/mat[i][i]
 
+        self._print_matrix("Solved matrix", mat, n, n + 1)
+
         return solution
 
     def _print_parms(self):
@@ -152,23 +159,24 @@ class DC42Delta(Delta.Delta):
             print "Diagonal Rod %c: %.3fmm" % (ord('A') + i, self.diagonal[i])
 
     def calibrate(self, target = 0.03):
+        print "Original parameters:"
+        self._print_parms()
+
         delta_points = self.delta_probe(self.numPoints)
 
         # Collect probe points
         motor_points = []
         zmin = min([x[2] for x in delta_points])
 
-        # Adjust bed height such that all points are above 0
-        self.bed_height += zmin
-
         initialSumOfSquares = 0
         for i in range(0, len(delta_points)):
             point = delta_points[i]
             point[2] -= zmin
+            perfect = (point[0], point[1], 0.0)
 
             # Convert from delta to motor position
-            motor = self.delta_to_motor(point)
-            print "probe %.2f, %.2f, [%.2f] => %.2f, %.2f, %.2f" % (point[0], point[1], point[2], motor[0], motor[1], motor[2])
+            motor = self.delta_to_motor(perfect)
+            print "probe %.2f, %.2f, [%.2f] => %.2f, %.2f, %.2f" % (point[0], point[1], 0.0, motor[0], motor[1], motor[2])
 
             motor_points.append(motor)
             initialSumOfSquares += math.pow(point[2], 2)
@@ -188,7 +196,7 @@ class DC42Delta(Delta.Delta):
                     pass
                 pass
 
-            self._print_matrix("dMatrix:", dMatrix, self.numPoints, self.numFactors );
+            self._print_matrix("Derivative matrix", dMatrix, self.numPoints, self.numFactors );
 
             # Build the equations = values
             nMatrix = [[0] * (self.numFactors + 1) for _ in xrange(self.numFactors)]
@@ -207,11 +215,8 @@ class DC42Delta(Delta.Delta):
                 nMatrix[i][self.numFactors] = temp
                 pass
 
-            self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
+            self._print_matrix("Normal matrix", nMatrix, self.numFactors, self.numFactors + 1);
             solution = self._gauss_jordan(nMatrix, self.numFactors)
-            self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
-
-            #self._print_matrix("nMatrix:", nMatrix, self.numFactors, self.numFactors + 1);
 
             self._print_matrix("Solution:", [solution], 1, self.numFactors);
 
@@ -230,20 +235,28 @@ class DC42Delta(Delta.Delta):
                     break
 
             self._apply_factor(solution)
+            self._print_parms()
 
             # Calculate the expected probe heights with this new set of adjustments
             expectedResiduals = [0] * self.numPoints
             sumOfSquares = 0
 
             for i in range(0, len(delta_points)):
+                print ("[ %.3f, %.3f, %.3f ] " % (motor_points[i][0], motor_points[i][1], motor_points[i][2])),
+
+                # Manual endpoint adjustment
+                for j in range(0, 3):
+                    motor_points[i][j] += solution[j]
+
                 newPosition = self.motor_to_delta(motor_points[i])
+                print ("[ %.3f, %.3f, %.3f ] => [ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2], newPosition[0], newPosition[1], newPosition[2]))
                 zCorrection[i] = newPosition[2]
                 expectedResiduals[i] = delta_points[i][2] + newPosition[2]
                 sumOfSquares += math.pow(expectedResiduals[i], 2)
 
             expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
             self._print_matrix("Expected probe error %.3f:" % (expectedRmsError), [expectedResiduals], 1, self.numPoints)
-            if expectedRmsError < 0.2:
+            if expectedRmsError < 0.1:
                 if attempt == 0:
                     print "Calibrated - no corrections needed"
                     return True

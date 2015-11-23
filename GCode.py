@@ -170,7 +170,7 @@ class GCode:
     def home(self):
         """G28 home """
         if self.port is None:
-            self.position = 0, 0, 150
+            self.position = 0, 0, self.delta_bed()[1]
             self.e = 0
             return
 
