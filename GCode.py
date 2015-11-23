@@ -16,25 +16,22 @@
 import serial
 import time
 
-repetier_eeprom = {
-                "Horizontal rod radius at 0,0 [mm]": 100.0,
-                "Delta Radius A(0):": 1.0,
-                "Delta Radius B(0):": 0.5,
-                "Delta Radius C(0):": 1.0,
-                "Steps per mm": 80,
-                "Tower X endstop offset [steps]": 0,
-                "Tower Y endstop offset [steps]": 66,
-                "Tower Z endstop offset [steps]": 34,
-                "Diagonal rod length [mm]": 196.0,
-                "Alpha A(210):": 210,
-                "Alpha B(330):": 330,
-                "Alpha C(90):": 90,
-                "Corr. diagonal A [mm]": 0.0,
-                "Corr. diagonal B [mm]": 0.0,
-                "Corr. diagonal C [mm]": 0.0,
-                "Max printable radius [mm]": 90,
-                "Z max length [mm]": 171.25,
-                }
+def collect_probe(filename = "point.plt"):
+    fd = open(filename, "r")
+    points = []
+    for line in fd:
+       point = line.split(" ")
+       points.append((float(point[0]), float(point[1]), float(point[2])))
+    fd.close()
+    return points
+
+def collect_eeprom(filename = "machine.epr"):
+    fd = open(filename, "r")
+    eeprom = {}
+    for line in fd:
+        (attr, val) = line.split("=",1)
+        eeprom[attr] = val
+    return eeprom
 
 class GCode:
     """GCode Sender"""
@@ -47,6 +44,9 @@ class GCode:
 
     def __init__(self, serial_port):
         self.port = serial_port
+        if self.port is None:
+            self.fake_probe = collect_probe("point-13.plt")
+            self.fake_eeprom = collect_eeprom("point-13.epr")
         self.reset()
         pass
 
@@ -189,15 +189,14 @@ class GCode:
     def zprobe(self, point = None, first = False, last = False):
         """G30 single-probe"""
         if self.port is None:
-            probes = (  0.02, 0.25, 0.80, 1.27,
-                        1.28, 0.96, 0.87, 0.88,
-                        0.60, 0.33, 0.12, 0.00, 0.33 )
-            if point is not None:
-                z = probes[self.z_probe]
-                self.z_probe += 1
-            else:
-                z = -1.23
-            return z
+            if point is None:
+                point = (self.position[0], self.position[1])
+            for i in range(0, 13):
+                fake = self.fake_probe[i]
+                if abs(fake[0]-point[0]) < 0.01 and abs(fake[1]-point[1]) < 0.01:
+                    return fake[2]
+            print "Probe Point not in database: ",point
+            assert 0 == 1
 
         p = 0
         if first:
@@ -314,7 +313,7 @@ class GCode:
     def repetier_eeprom(self, key, value = None):
         if self.port is None:
             if self.eeprom is None:
-                self.eeprom = repetier_eeprom.copy()
+                self.eeprom = self.fake_eeprom.copy()
             val = self.eeprom[key]
             if value is not None:
                 self.eeprom[key] = value
