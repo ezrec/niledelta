@@ -17,7 +17,7 @@ import serial
 import time
 
 repetier_eeprom = {
-                "Horizontal radius [mm]": 100.0,
+                "Horizontal rod radius at 0,0 [mm]": 100.0,
                 "Delta Radius A(0):": 1.0,
                 "Delta Radius B(0):": 0.5,
                 "Delta Radius C(0):": 1.0,
@@ -32,7 +32,7 @@ repetier_eeprom = {
                 "Corr. diagonal A [mm]": 0.0,
                 "Corr. diagonal B [mm]": 0.0,
                 "Corr. diagonal C [mm]": 0.0,
-                "Max. radius [mm]": 90,
+                "Max printable radius [mm]": 90,
                 "Z max length [mm]": 171.25,
                 }
 
@@ -76,6 +76,7 @@ class GCode:
     def _parse_EPR(self, line):
         epr, rest = line.split(":",1)
         etype, epos, val, name = rest.split(" ", 3)
+        print ("EPR: '%s' = %s" % (name, val))
         self.eeprom[name] = (val, int(etype), int(epos))
 
     def _parse_XYZE(self, report):
@@ -250,7 +251,7 @@ class GCode:
             for i in range(0, 3):
                 dcorr[i] = radius[i] - dradius
 
-        horiz_radius = float(self.repetier_eeprom("Horizontal radius [mm]", dradius))
+        horiz_radius = float(self.repetier_eeprom("Horizontal rod radius at 0,0 [mm]", dradius))
         a_radius = float(self.repetier_eeprom("Delta Radius A(0):", dcorr[0])) + horiz_radius
         b_radius = float(self.repetier_eeprom("Delta Radius B(0):", dcorr[1])) + horiz_radius
         c_radius = float(self.repetier_eeprom("Delta Radius C(0):", dcorr[2])) + horiz_radius
@@ -290,7 +291,7 @@ class GCode:
 
     # REPETIER
     def delta_bed(self, radius = None, height = None):
-        old_radius = float(self.repetier_eeprom("Max. radius [mm]", radius))
+        old_radius = float(self.repetier_eeprom("Max printable radius [mm]", radius))
         old_height = float(self.repetier_eeprom("Z max length [mm]", height))
 
         return old_radius, old_height
