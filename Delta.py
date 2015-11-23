@@ -85,6 +85,27 @@ class Delta(GCode.GCode):
                 tower[i] = (px, py)
             return tower[0], tower[1], tower[2], (0, 0), (-tower[0][0], -tower[0][1]), (-tower[1][0], -tower[1][1]), (-tower[2][0], -tower[2][1])
 
+        if count == 13:
+            tower = [ (0,0), (0,0), (0,0) ]
+            for i in range(0,3):
+                px = math.cos(self.angle[i] * deg) * self.bed_radius * self.bed_factor
+                py = math.sin(self.angle[i] * deg) * self.bed_radius * self.bed_factor
+                tower[i] = (px, py)
+            tower = [ tower[0],
+                     (-tower[2][0], -tower[2][1]),
+                     tower[1],
+                     (-tower[0][0], -tower[0][1]),
+                     tower[2],
+                     (-tower[1][0], -tower[1][1])]
+            retval = [0] * 13
+            for i in range(0, 6):
+                retval[i] = tower[i]
+                retval[i+6] = (tower[i][0]/2, tower[i][1]/2)
+            retval[12] = (0,0)
+            return retval
+
+
+
         # Make a circle around the bed, ending at the center.
         points = []
         for i in range(0, count-1):
