@@ -39,7 +39,7 @@ class DC42Delta(Delta.Delta):
     # the diaganoal rod length is corroect,
     # and that Angles A/B/C are correct.
     #
-    numFactors = 4
+    numFactors = 6
     numPoints = 13
 
     def __init__(self, gcode = None):
@@ -50,11 +50,6 @@ class DC42Delta(Delta.Delta):
             delta.endstop[index] += value
             return
         index -= 3
-
-        if index == 0:
-            for i in range(0, 3):
-                delta.radius[i] += value
-            return
 
         if index in range(0, 3):
             delta.radius[index] += value
