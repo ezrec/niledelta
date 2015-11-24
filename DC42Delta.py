@@ -34,12 +34,13 @@ class DC42Delta(Delta.Delta):
     #  3 - Radius A
     #  4 - Radius B
     #  5 - Radius C
+    #  6 - Diagonal rod
     #
     # The assumption is that the bed is flat,
     # the diaganoal rod length is corroect,
     # and that Angles A/B/C are correct.
     #
-    numFactors = 6
+    numFactors = 7
     numPoints = 13
 
     def __init__(self, gcode = None):
@@ -55,6 +56,12 @@ class DC42Delta(Delta.Delta):
             delta.radius[index] += value
             return
         index -= 3
+
+        if index == 0:
+            for i in range(0, 3):
+                delta.diagonal[i] += value
+            return
+        index -= 1
 
         return
 
@@ -181,7 +188,7 @@ class DC42Delta(Delta.Delta):
         converged = False
         zCorrection = [0] * self.numPoints
 
-        for attempt in range(0, 2):
+        for attempt in range(0, 4):
             # Build a Nx7 matrix of derivatives
 
             dMatrix = [[0] * self.numFactors for _ in xrange(self.numPoints)]
@@ -251,15 +258,12 @@ class DC42Delta(Delta.Delta):
 
             expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
             self._print_matrix("Expected probe error %.3f:" % (expectedRmsError), [expectedResiduals], 1, self.numPoints)
-            if expectedRmsError < 0.1:
-                if attempt == 0:
-                    print "Calibrated - no corrections needed"
-                    return True
+            if expectedRmsError < 0.2:
                 converged = True
                 break
 
 
-        # Update EEPROM
+        # Display updated parameters
         if converged:
             print "Converged solution found:"
             self._print_parms()
