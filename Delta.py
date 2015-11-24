@@ -127,7 +127,7 @@ class Delta(GCode.GCode):
         # Collect probe points
         delta_points = [[x[0], x[1], 0] for x in probe_points]
         for point in delta_points:
-            point[2] = self.zprobe((point[0], point[1], None))
+            point[2] = self.zprobe((point[0], point[1], 20))
             # Convert from probe to nozzle
             point[0] -= probe_offset[0]
             point[1] -= probe_offset[1]
