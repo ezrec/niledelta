@@ -29,7 +29,7 @@ def collect_eeprom(filename = "machine.epr"):
     fd = open(filename, "r")
     eeprom = {}
     for line in fd:
-        (attr, val) = line.split("=",1)
+        (attr, val) = line.strip().split("=",1)
         eeprom[attr] = val
     return eeprom
 
@@ -310,20 +310,23 @@ class GCode:
         return [x, y, z]
 
     # REPETIER
-    def repetier_eeprom(self, key, value = None):
+    def repetier_eeprom(self, key = None, value = None):
         if self.port is None:
             if self.eeprom is None:
                 self.eeprom = self.fake_eeprom.copy()
             val = self.eeprom[key]
             if value is not None:
                 self.eeprom[key] = value
-                print "EPR: %s %.3f" % (key, value)
             return val
 
         if self.eeprom is None:
             # Fetch the EEPROM table
             self.eeprom = {}
             self.write("M205")
+            of = open("machine.epr", "w")
+            for k in self.eeprom:
+                of.write("%s=%s\n" % (k, self.eeprom[k][0]))
+            of.close()
 
         eset = self.eeprom.get(key)
         if eset is None:
