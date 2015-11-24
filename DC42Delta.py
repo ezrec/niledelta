@@ -258,7 +258,7 @@ class DC42Delta(Delta.Delta):
 
             expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
             self._print_matrix("Expected probe error %.3f:" % (expectedRmsError), [expectedResiduals], 1, self.numPoints)
-            if expectedRmsError < 0.2:
+            if attempt > 1 and expectedRmsError < 0.2:
                 converged = True
                 break
 
