@@ -19,9 +19,34 @@ import serial
 import time
 
 import DC42Delta
+import Delta
+
+class fake_probe(Delta.Delta):
+    def __init__(self, eeprom = None):
+        Delta.Delta.__init__(self, eeprom = eeprom)
+        self.bed_screw[0][2]=0
+        self.bed_screw[1][2]=0.43
+        self.bed_screw[2][2]=0.63
+        self.recalc()
+
+    def probe(self, delta = None, point = None):
+        # Get the motor position of the point from the testing model
+        offset = [0,0] #delta.zprobe_offset()
+        point = [point[0]-offset[0], point[1]-offset[1], 0]
+        motor = delta.delta_to_motor(point)
+        motor[0] -= delta.endstop[0]
+        motor[1] -= delta.endstop[1]
+        motor[2] -= delta.endstop[2]
+        # Get the actual position of the motor from the reference model
+        motor[0] += self.endstop[0]
+        motor[1] += self.endstop[1]
+        motor[2] += self.endstop[2]
+        actual = self.motor_to_delta(motor)
+        print "Offset: %.3f, %.3f, %.3f" % (actual[0], actual[1], self.bed_offset(actual))
+        return self.bed_offset(actual)-actual[2]
 
 def main():
-    delta = DC42Delta.DC42Delta()
+    delta = DC42Delta.DC42Delta(probe=fake_probe(eeprom = "fake.epr"))
 
     delta.calibrate()
 

@@ -16,16 +16,9 @@
 import serial
 import time
 
-def collect_probe(filename = "point.plt"):
-    fd = open(filename, "r")
-    points = []
-    for line in fd:
-       point = line.split(" ")
-       points.append((float(point[0]), float(point[1]), float(point[2])))
-    fd.close()
-    return points
-
-def collect_eeprom(filename = "machine.epr"):
+def collect_eeprom(filename = None):
+    if filename is None:
+        filename = "machine.epr"
     fd = open(filename, "r")
     eeprom = {}
     for line in fd:
@@ -42,11 +35,11 @@ class GCode:
     f = 4000
     eeprom = None
 
-    def __init__(self, serial_port):
-        self.port = serial_port
+    def __init__(self, port = None, probe = None, eeprom = None):
+        self.port = port
         if self.port is None:
-            self.fake_probe = collect_probe("point-13.plt")
-            self.fake_eeprom = collect_eeprom("point-13.epr")
+            self.fake_probe = probe
+            self.fake_eeprom = collect_eeprom(eeprom)
         self.reset()
         pass
 
@@ -191,12 +184,7 @@ class GCode:
         if self.port is None:
             if point is None:
                 point = (self.position[0], self.position[1])
-            for i in range(0, 13):
-                fake = self.fake_probe[i]
-                if abs(fake[0]-point[0]) < 0.01 and abs(fake[1]-point[1]) < 0.01:
-                    return fake[2]
-            print "Probe Point not in database: ",point
-            assert 0 == 1
+            return self.fake_probe.probe(delta=self, point=point)
 
         p = 0
         if first:
@@ -297,15 +285,13 @@ class GCode:
 
     # REPETIER
     def zprobe_offset(self, offset = None):
-        if self.port is None:
-            return [0, 0, 0]
-
         if offset is None:
             offset = None, None, None
 
         x = float(self.repetier_eeprom("Z-probe offset x [mm]", offset[0]))
         y = float(self.repetier_eeprom("Z-probe offset y [mm]", offset[1]))
         z = float(self.repetier_eeprom("Z-probe height [mm]", offset[2]))
+        y = 18.0
 
         return [x, y, z]
 

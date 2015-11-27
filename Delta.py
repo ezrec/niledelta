@@ -20,14 +20,16 @@ import copy
 
 class Delta(GCode.GCode):
     """ Delta Machine """
-    def __init__(self, port = None):
-        GCode.GCode.__init__(self, port)
+    def __init__(self, port = None, eeprom = None, probe = None):
+        GCode.GCode.__init__(self, port = port, eeprom = eeprom, probe = probe)
         self.bed_radius, self.bed_height = self.delta_bed()
         self.radius = self.delta_radius()
         self.diagonal = self.delta_diagonal()
         self.angle = self.delta_angle()
         self.endstop = self.endstop_trim()
         self.bed_factor = 0.8
+        self.bed_screw = [[0,0,0],[0,0,0],[0,0,0]]
+        self.bed_matrix = [0, 0, 0, 0]
         self.recalc()
 
     def copy(self):
@@ -39,6 +41,7 @@ class Delta(GCode.GCode):
         delta.angle = self.angle[:]
         delta.endstop = self.endstop[:]
         delta.bed_factor = self.bed_factor
+        delta.bed_screw = self.bed_screw[:]
         delta.recalc()
         return delta
 
@@ -56,9 +59,9 @@ class Delta(GCode.GCode):
 
         self.tower = [(), (), ()]
         for i in range(0,3):
-            px = math.cos(self.angle[i] * deg) * self.radius[i]
-            py = math.sin(self.angle[i] * deg) * self.radius[i]
-            self.tower[i] = (px, py)
+            px = math.cos(self.angle[i] * deg)
+            py = math.sin(self.angle[i] * deg)
+            self.tower[i] = (px * self.radius[i], py * self.radius[i])
 
         # Adjust the endstops
         minstop = min(self.endstop)
@@ -66,6 +69,38 @@ class Delta(GCode.GCode):
             self.endstop[i] -= minstop
 
         self.bed_height -= minstop
+
+        min_screw = None
+        for i in range(0,3):
+            px = math.cos(self.angle[i] * deg)
+            py = math.sin(self.angle[i] * deg)
+            self.bed_screw[i][0] = -px * 100
+            self.bed_screw[i][1] = -py * 100
+            if min_screw is None or self.bed_screw[i][2] < min_screw:
+                min_screw = self.bed_screw[i][2]
+
+        for i in range(0, 3):
+            self.bed_screw[i][2] -= min_screw
+
+        v1 = [self.bed_screw[1][0] - self.bed_screw[0][0],
+              self.bed_screw[1][1] - self.bed_screw[0][1],
+              self.bed_screw[1][2] - self.bed_screw[0][2]]
+        v2 = [self.bed_screw[2][0] - self.bed_screw[0][0],
+              self.bed_screw[2][1] - self.bed_screw[0][1],
+              self.bed_screw[2][2] - self.bed_screw[0][2]]
+
+        norm = [v1[1]*v2[2]-v1[2]*v2[1],
+                v1[2]*v2[0]-v1[0]*v2[2],
+                v1[0]*v2[1]-v1[1]*v2[0]]
+        self.bed_matrix = [norm[0], norm[1], norm[2],
+                           norm[0]*self.bed_screw[0][0] +
+                           norm[1]*self.bed_screw[0][1] +
+                           norm[1]*self.bed_screw[0][2]]
+
+    def bed_offset(self, point = (0, 0)):
+        return (point[0]*self.bed_matrix[0] +
+                point[1]*self.bed_matrix[1] -
+                self.bed_matrix[3])/-self.bed_matrix[2]
 
     def plot_points(self, points):
         f = open("plot.plt", "w+")
@@ -134,7 +169,8 @@ class Delta(GCode.GCode):
 
         self.zprobe(None, last = True)
 
-        self.plot_points(delta_points)
+        if self.port is not None:
+            self.plot_points(delta_points)
 
         return delta_points
 
@@ -186,6 +222,6 @@ class Delta(GCode.GCode):
         x = (U * z - S) / Q
         y = (P - R * z) / Q
 
-        return (x, y, z)
+        return [x, y, z]
 
 # vim: set shiftwidth=4 expandtab: #

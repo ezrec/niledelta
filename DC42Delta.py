@@ -31,20 +31,21 @@ class DC42Delta(Delta.Delta):
     #  0 - Endstop A
     #  1 - Endstop B
     #  2 - Endstop C
-    #  3 - Radius A
-    #  4 - Radius B
-    #  5 - Radius C
-    #  6 - Diagonal rod
+    #  3 - Bed Level Screw A (Diagonal from A)
+    #  4 - Bed Level Screw B (Diagnoal from B)
+    #  5 - Bed Level Screw C (Digaonal from C)
+    #  6 - Radius A
+    #  7 - Radius B
+    #  8 - Radius C
+    #  9 - Diagonal rod
     #
-    # The assumption is that the bed is flat,
-    # the diaganoal rod length is corroect,
-    # and that Angles A/B/C are correct.
+    # Assuming that Angles A/B/C are correct.
     #
-    numFactors = 7
+    numFactors = 10
     numPoints = 13
 
-    def __init__(self, gcode = None):
-        Delta.Delta.__init__(self, gcode)
+    def __init__(self, port = None, probe = None, eeprom = None):
+        Delta.Delta.__init__(self, port = port, probe = probe, eeprom = eeprom)
 
     def _apply_value(self, delta = None, index = None, value = None):
         if index in range(0, 3):
@@ -63,6 +64,11 @@ class DC42Delta(Delta.Delta):
             return
         index -= 1
 
+        if index in range(0, 3):
+            delta.bed_screw[index][2] += value
+            return
+        index -= 3
+
         return
 
     def _apply_factor(self, factor = [0] * numFactors, delta = None):
@@ -75,7 +81,7 @@ class DC42Delta(Delta.Delta):
         delta.recalc()
 
     def _derivative(self, deriv = 0, pos = (0, 0, 0)):
-        perturb = 0.2;
+        perturb = 0.2
         hi = self.copy()
         lo = self.copy()
         factor = [0] * self.numFactors
@@ -93,7 +99,9 @@ class DC42Delta(Delta.Delta):
             pos_lo[deriv] -= perturb
 
         pos_hi = hi.motor_to_delta(pos_hi)
+        pos_hi[2] -= hi.bed_offset(pos)*2
         pos_lo = lo.motor_to_delta(pos_lo)
+        pos_lo[2] -= lo.bed_offset(pos)*2
 
         return (pos_hi[2] - pos_lo[2])/(2 * perturb)
 
@@ -147,6 +155,9 @@ class DC42Delta(Delta.Delta):
     def _print_parms(self):
         print "Bed Height: %.3fmm" % (self.bed_height)
 
+        for i in range(0, 3):
+            print "Bed Level %c: %.3fmm" % (ord('A') + i, self.bed_screw[i][2])
+
         # Adjust all the endstops
         for i in range(0, 3):
             print "Endstop %c: %.3fmm (%d steps)" % (ord('X') + i, self.endstop[i], self.endstop[i] * self.steps_per_mm())
@@ -171,10 +182,12 @@ class DC42Delta(Delta.Delta):
         zmin = min([x[2] for x in delta_points])
 
         initialSumOfSquares = 0
+        offset = self.zprobe_offset()
+
         for i in range(0, len(delta_points)):
             point = delta_points[i]
             point[2] -= zmin
-            perfect = (point[0], point[1], 0.0)
+            perfect = (point[0]+offset[0], point[1]+offset[1], 0)
 
             # Convert from delta to motor position
             motor = self.delta_to_motor(perfect)
@@ -188,7 +201,7 @@ class DC42Delta(Delta.Delta):
         converged = False
         zCorrection = [0] * self.numPoints
 
-        for attempt in range(0, 4):
+        for attempt in range(0, 10):
             # Build a Nx7 matrix of derivatives
 
             dMatrix = [[0] * self.numFactors for _ in xrange(self.numPoints)]
@@ -234,7 +247,7 @@ class DC42Delta(Delta.Delta):
             for i in range(0, self.numFactors):
                 if solution[i] > 20 or solution[i] < -20:
                     print "BOGUS SOLUTION"
-                    break
+                    return
 
             self._apply_factor(solution)
             self._print_parms()
@@ -251,6 +264,7 @@ class DC42Delta(Delta.Delta):
                     motor_points[i][j] += solution[j]
 
                 newPosition = self.motor_to_delta(motor_points[i])
+                newPosition[2] -= self.bed_offset(newPosition)
                 print ("[ %.3f, %.3f, %.3f ] => [ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2], newPosition[0], newPosition[1], newPosition[2]))
                 zCorrection[i] = newPosition[2]
                 expectedResiduals[i] = delta_points[i][2] + newPosition[2]
@@ -258,7 +272,7 @@ class DC42Delta(Delta.Delta):
 
             expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
             self._print_matrix("Expected probe error %.3f:" % (expectedRmsError), [expectedResiduals], 1, self.numPoints)
-            if attempt > 1 and expectedRmsError < 0.2:
+            if attempt > 1 and expectedRmsError < 0.05:
                 converged = True
                 break
 
