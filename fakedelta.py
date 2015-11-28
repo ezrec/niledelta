@@ -25,8 +25,8 @@ class fake_probe(Delta.Delta):
     def __init__(self, eeprom = None):
         Delta.Delta.__init__(self, eeprom = eeprom)
         self.bed_screw[0][2]=0
-        self.bed_screw[1][2]=0.43
-        self.bed_screw[2][2]=0.63
+        self.bed_screw[1][2]=0
+        self.bed_screw[2][2]=0
         self.recalc()
 
     def probe(self, delta = None, point = None):

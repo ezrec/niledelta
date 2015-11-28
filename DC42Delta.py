@@ -41,7 +41,7 @@ class DC42Delta(Delta.Delta):
     #
     # Assuming that Angles A/B/C are correct.
     #
-    numFactors = 10
+    numFactors = 6
     numPoints = 13
 
     def __init__(self, port = None, probe = None, eeprom = None):
@@ -272,7 +272,7 @@ class DC42Delta(Delta.Delta):
 
             expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
             self._print_matrix("Expected probe error %.3f:" % (expectedRmsError), [expectedResiduals], 1, self.numPoints)
-            if attempt > 1 and expectedRmsError < 0.05:
+            if attempt > 1 and expectedRmsError < 0.10:
                 converged = True
                 break
 
