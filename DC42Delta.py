@@ -92,16 +92,10 @@ class DC42Delta(Delta.Delta):
         factor[deriv] = -perturb
         self._apply_factor(factor = factor, delta = lo)
 
-        pos_hi = [pos[0], pos[1], pos[2]]
-        pos_lo = [pos[0], pos[1], pos[2]]
-        if deriv < 3:
-            pos_hi[deriv] += perturb
-            pos_lo[deriv] -= perturb
-
-        pos_hi = hi.motor_to_delta(pos_hi)
-        pos_hi[2] -= hi.bed_offset(pos)*2
-        pos_lo = lo.motor_to_delta(pos_lo)
-        pos_lo[2] -= lo.bed_offset(pos)*2
+        pos_hi = hi.motor_to_delta(pos)
+        pos_hi[2] -= hi.bed_offset(pos_hi)
+        pos_lo = lo.motor_to_delta(pos)
+        pos_lo[2] -= lo.bed_offset(pos_lo)
 
         return (pos_hi[2] - pos_lo[2])/(2 * perturb)
 
@@ -191,6 +185,7 @@ class DC42Delta(Delta.Delta):
 
             # Convert from delta to motor position
             motor = self.delta_to_motor(perfect)
+
             print "probe %.2f, %.2f, [%.2f] => %.2f, %.2f, %.2f" % (point[0], point[1], 0.0, motor[0], motor[1], motor[2])
 
             motor_points.append(motor)
@@ -259,10 +254,6 @@ class DC42Delta(Delta.Delta):
             for i in range(0, len(delta_points)):
                 print ("[ %.3f, %.3f, %.3f ] " % (motor_points[i][0], motor_points[i][1], motor_points[i][2])),
 
-                # Manual endpoint adjustment
-                for j in range(0, 3):
-                    motor_points[i][j] += solution[j]
-
                 newPosition = self.motor_to_delta(motor_points[i])
                 newPosition[2] -= self.bed_offset(newPosition)
                 print ("[ %.3f, %.3f, %.3f ] => [ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2], newPosition[0], newPosition[1], newPosition[2]))
@@ -279,6 +270,13 @@ class DC42Delta(Delta.Delta):
 
         # Display updated parameters
         if converged:
+            minstop = self.endstop[0]
+            for i in range(1, 3):
+                if self.endstop[i] < minstop:
+                    minstop = self.endstop[i]
+            for i in range(0, 3):
+                self.endstop[i] -= minstop
+
             print "Converged solution found:"
             self._print_parms()
 

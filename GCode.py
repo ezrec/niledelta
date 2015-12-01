@@ -195,7 +195,7 @@ class GCode:
         self.move(point)
         self.write("G30 P%d" % (p))
 
-        return self.position[2] - self.z_probe
+        return self.z_probe - self.position[2]
 
     # REPETIER
     def endstop_trim_clear(self):
@@ -291,7 +291,6 @@ class GCode:
         x = float(self.repetier_eeprom("Z-probe offset x [mm]", offset[0]))
         y = float(self.repetier_eeprom("Z-probe offset y [mm]", offset[1]))
         z = float(self.repetier_eeprom("Z-probe height [mm]", offset[2]))
-        y = 18.0
 
         return [x, y, z]
 
