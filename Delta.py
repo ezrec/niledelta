@@ -63,24 +63,11 @@ class Delta(GCode.GCode):
             py = math.sin(self.angle[i] * deg)
             self.tower[i] = (px * self.radius[i], py * self.radius[i])
 
-        # Adjust the endstops
-        minstop = min(self.endstop)
-        for i in range(0, 3):
-            self.endstop[i] -= minstop
-
-        self.bed_height -= minstop
-
-        min_screw = None
         for i in range(0,3):
             px = math.cos(self.angle[i] * deg)
             py = math.sin(self.angle[i] * deg)
             self.bed_screw[i][0] = -px * 100
             self.bed_screw[i][1] = -py * 100
-            if min_screw is None or self.bed_screw[i][2] < min_screw:
-                min_screw = self.bed_screw[i][2]
-
-        for i in range(0, 3):
-            self.bed_screw[i][2] -= min_screw
 
         v1 = [self.bed_screw[1][0] - self.bed_screw[0][0],
               self.bed_screw[1][1] - self.bed_screw[0][1],
@@ -180,6 +167,7 @@ class Delta(GCode.GCode):
         for i in range(0, 3):
             D2 = math.pow(self.diagonal[i], 2)
             motor[i] = z + math.sqrt(D2 - math.pow(point[0] - self.tower[i][0], 2) - math.pow(point[1] - self.tower[i][1], 2))
+            motor[i] += self.endstop[i]
 
         return motor
 
@@ -188,6 +176,7 @@ class Delta(GCode.GCode):
         F = [0, 0, 0]
         motor = pos[:]
         for i in range(0, 3):
+            motor[i] -= self.endstop[i]
             coreF[i] = math.pow(self.tower[i][0], 2) + math.pow(self.tower[i][1], 2)
             F[i] = coreF[i] + math.pow(motor[i], 2)
             pass
