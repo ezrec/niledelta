@@ -23,6 +23,11 @@ import serial
 import time
 import GCode
 import Delta
+import numpy
+import mpl_toolkits.mplot3d.axes3d
+import matplotlib.pyplot
+import matplotlib.tri
+import matplotlib.cm
 
 class DC42Delta(Delta.Delta):
     """ DC42Delta Calibrator """
@@ -165,6 +170,24 @@ class DC42Delta(Delta.Delta):
         for i in range(0, 3):
             print "Diagonal Rod %c: %.3fmm" % (ord('A') + i, self.diagonal[i])
 
+    def _view(self, points, correction):
+        x = numpy.array([p[0] for p in points])
+        y = numpy.array([p[1] for p in points])
+        z = numpy.array([(points[i][2]+correction[i]) for i in range(0,len(points))])
+
+        tri = matplotlib.tri.Triangulation(x, y)
+        ref = matplotlib.tri.UniformTriRefiner(tri)
+        new, new_z = ref.refine_field(z, subdiv=4)
+
+        norm = matplotlib.pyplot.Normalize(vmax=1, vmin=-1)
+        kwargs = dict(triangles=new.triangles, cmap=matplotlib.cm.jet, norm=norm, linewidth=0.2)
+
+        fig = matplotlib.pyplot.figure()
+        ax = mpl_toolkits.mplot3d.axes3d.Axes3D(fig)
+        ax.set_zlim3d(-0.5, 0.5)
+        plot = ax.plot_trisurf(new.x, new.y, new_z, **kwargs)
+        matplotlib.pyplot.show()
+
     def calibrate(self, target = 0.03):
         print "Original parameters:"
         self._print_parms()
@@ -198,6 +221,8 @@ class DC42Delta(Delta.Delta):
 
         for attempt in range(0, 10):
             # Build a Nx7 matrix of derivatives
+
+            self._view(delta_points, zCorrection)
 
             dMatrix = [[0] * self.numFactors for _ in xrange(self.numPoints)]
             for i in range(0, len(delta_points)):
@@ -279,6 +304,7 @@ class DC42Delta(Delta.Delta):
 
             print "Converged solution found:"
             self._print_parms()
+            self._view(delta_points, zCorrection)
 
         return converged
 
