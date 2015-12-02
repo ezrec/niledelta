@@ -41,7 +41,7 @@ class DC42Delta(Delta.Delta):
     #
     # Assuming that Angles A/B/C are correct.
     #
-    numFactors = 6
+    numFactors = 7
     numPoints = 13
 
     def __init__(self, port = None, probe = None, eeprom = None):

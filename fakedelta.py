@@ -34,13 +34,7 @@ class fake_probe(Delta.Delta):
         offset = [0,0] #delta.zprobe_offset()
         point = [point[0]-offset[0], point[1]-offset[1], 0]
         motor = delta.delta_to_motor(point)
-        motor[0] -= delta.endstop[0]
-        motor[1] -= delta.endstop[1]
-        motor[2] -= delta.endstop[2]
         # Get the actual position of the motor from the reference model
-        motor[0] += self.endstop[0]
-        motor[1] += self.endstop[1]
-        motor[2] += self.endstop[2]
         actual = self.motor_to_delta(motor)
         print "Offset: %.3f, %.3f, %.3f" % (actual[0], actual[1], self.bed_offset(actual))
         return self.bed_offset(actual)-actual[2]
