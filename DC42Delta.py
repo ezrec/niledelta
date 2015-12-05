@@ -204,14 +204,14 @@ class DC42Delta(Delta.Delta):
 
         # Collect probe points
         motor_points = []
-        zmin = min([x[2] for x in delta_points])
+        zavg = sum([x[2] for x in delta_points]) / len(delta_points)
 
         initialSumOfSquares = 0
         offset = self.zprobe_offset()
 
         for i in range(0, len(delta_points)):
             point = delta_points[i]
-            point[2] -= zmin
+            point[2] -= zavg
             perfect = (point[0]+offset[0], point[1]+offset[1], 0)
 
             # Convert from delta to motor position
