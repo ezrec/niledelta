@@ -168,7 +168,7 @@ class Delta(GCode.GCode):
         for i in range(0, 3):
             D2 = math.pow(self.diagonal[i], 2)
             motor[i] = z + math.sqrt(D2 - math.pow(point[0] - self.tower[i][0], 2) - math.pow(point[1] - self.tower[i][1], 2))
-            motor[i] += self.endstop[i]
+            motor[i] -= self.endstop[i]
             motor[i] *= self.steps
 
         return motor
@@ -179,7 +179,7 @@ class Delta(GCode.GCode):
         motor = pos[:]
         for i in range(0, 3):
             motor[i] /= self.steps
-            motor[i] -= self.endstop[i]
+            motor[i] += self.endstop[i]
             coreF[i] = math.pow(self.tower[i][0], 2) + math.pow(self.tower[i][1], 2)
             F[i] = coreF[i] + math.pow(motor[i], 2)
             pass

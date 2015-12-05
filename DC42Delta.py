@@ -55,12 +55,12 @@ class DC42Delta(Delta.Delta):
 
     def _apply_value(self, delta = None, index = None, value = None):
         if index in range(0, 3):
-            delta.endstop[index] += value
+            delta.radius[index] += value
             return
         index -= 3
 
         if index in range(0, 3):
-            delta.radius[index] += value
+            delta.endstop[index] += value
             return
         index -= 3
 
@@ -185,7 +185,7 @@ class DC42Delta(Delta.Delta):
 
         tri = matplotlib.tri.Triangulation(x, y)
         ref = matplotlib.tri.UniformTriRefiner(tri)
-        new, new_z = ref.refine_field(z, subdiv=4)
+        new, new_z = ref.refine_field(z, subdiv=3)
 
         norm = matplotlib.pyplot.Normalize(vmax=1, vmin=-1)
         kwargs = dict(triangles=new.triangles, cmap=matplotlib.cm.jet, norm=norm, linewidth=0.2)
@@ -288,7 +288,7 @@ class DC42Delta(Delta.Delta):
                 print ("[ %.3f, %.3f, %.3f ] " % (motor_points[i][0], motor_points[i][1], motor_points[i][2])),
 
                 newPosition = self.motor_to_delta(motor_points[i])
-                newPosition[2] -= self.bed_offset(newPosition)
+                newPosition[2] -= self.bed_offset(newPosition)/2
                 print ("[ %.3f, %.3f, %.3f ] => [ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2], newPosition[0], newPosition[1], newPosition[2]))
                 zCorrection[i] = newPosition[2]
                 expectedResiduals[i] = delta_points[i][2] + newPosition[2]
