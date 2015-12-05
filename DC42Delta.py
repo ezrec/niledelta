@@ -36,17 +36,18 @@ class DC42Delta(Delta.Delta):
     #  0 - Endstop A
     #  1 - Endstop B
     #  2 - Endstop C
-    #  3 - Bed Level Screw A (Diagonal from A)
-    #  4 - Bed Level Screw B (Diagnoal from B)
-    #  5 - Bed Level Screw C (Digaonal from C)
     #  6 - Radius A
     #  7 - Radius B
     #  8 - Radius C
+    #  9 - Steps per mm
     #  9 - Diagonal rod
+    #  3 - Bed Level Screw A (Diagonal from A)
+    #  4 - Bed Level Screw B (Diagnoal from B)
+    #  5 - Bed Level Screw C (Digaonal from C)
     #
     # Assuming that Angles A/B/C are correct.
     #
-    numFactors = 7
+    numFactors = 6
     numPoints = 13
 
     def __init__(self, port = None, probe = None, eeprom = None):
@@ -62,6 +63,11 @@ class DC42Delta(Delta.Delta):
             delta.radius[index] += value
             return
         index -= 3
+
+        if index == 0:
+            delta.steps += value
+            return
+        index -= 1
 
         if index == 0:
             for i in range(0, 3):
@@ -153,6 +159,8 @@ class DC42Delta(Delta.Delta):
 
     def _print_parms(self):
         print "Bed Height: %.3fmm" % (self.bed_height)
+
+        print "Steps per mm: %.3f" % (self.steps)
 
         for i in range(0, 3):
             print "Bed Level %c: %.3fmm" % (ord('A') + i, self.bed_screw[i][2])

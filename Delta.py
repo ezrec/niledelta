@@ -27,9 +27,10 @@ class Delta(GCode.GCode):
         self.diagonal = self.delta_diagonal()
         self.angle = self.delta_angle()
         self.endstop = self.endstop_trim()
-        self.bed_factor = 0.8
+        self.bed_factor = 1.0
         self.bed_screw = [[0,0,0],[0,0,0],[0,0,0]]
         self.bed_matrix = [0, 0, 0, 0]
+        self.steps = self.steps_per_mm()
         self.recalc()
 
     def copy(self):
@@ -168,6 +169,7 @@ class Delta(GCode.GCode):
             D2 = math.pow(self.diagonal[i], 2)
             motor[i] = z + math.sqrt(D2 - math.pow(point[0] - self.tower[i][0], 2) - math.pow(point[1] - self.tower[i][1], 2))
             motor[i] += self.endstop[i]
+            motor[i] *= self.steps
 
         return motor
 
@@ -176,6 +178,7 @@ class Delta(GCode.GCode):
         F = [0, 0, 0]
         motor = pos[:]
         for i in range(0, 3):
+            motor[i] /= self.steps
             motor[i] -= self.endstop[i]
             coreF[i] = math.pow(self.tower[i][0], 2) + math.pow(self.tower[i][1], 2)
             F[i] = coreF[i] + math.pow(motor[i], 2)
