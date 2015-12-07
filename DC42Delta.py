@@ -33,52 +33,43 @@ class DC42Delta(Delta.Delta):
     """ DC42Delta Calibrator """
 
     # Solve for the following factors:
-    #  0 - Endstop A
-    #  1 - Endstop B
-    #  2 - Endstop C
-    #  6 - Radius A
-    #  7 - Radius B
-    #  8 - Radius C
-    #  9 - Steps per mm
-    #  9 - Diagonal rod
-    #  3 - Bed Level Screw A (Diagonal from A)
-    #  4 - Bed Level Screw B (Diagnoal from B)
-    #  5 - Bed Level Screw C (Digaonal from C)
+    #  Endstop A
+    #  Endstop B
+    #  Radius A
+    #  Radius B
+    #  Radius C
+    #  Bed Level Screw A (Diagonal from A)
+    #  Bed Level Screw B (Diagnoal from B)
     #
-    # Assuming that Angles A/B/C are correct.
+    #  Note that Endstop C, Bed Screw C, and Angle C are held constant.
     #
-    numFactors = 6
+    numFactors = 7
     numPoints = 13
 
     def __init__(self, port = None, probe = None, eeprom = None):
         Delta.Delta.__init__(self, port = port, probe = probe, eeprom = eeprom)
 
     def _apply_value(self, delta = None, index = None, value = None):
+        if index in range(0, 2):
+            delta.endstop[index] += value
+            return
+        index -= 2
+
         if index in range(0, 3):
             delta.radius[index] += value
             return
         index -= 3
 
-        if index in range(0, 3):
-            delta.endstop[index] += value
+        if index in range(0, 2):
+            delta.bed_screw[index][2] += value
             return
-        index -= 3
-
-        if index == 0:
-            delta.steps += value
-            return
-        index -= 1
+        index -= 2
 
         if index == 0:
             for i in range(0, 3):
                 delta.diagonal[i] += value
             return
         index -= 1
-
-        if index in range(0, 3):
-            delta.bed_screw[index][2] += value
-            return
-        index -= 3
 
         return
 
@@ -163,7 +154,7 @@ class DC42Delta(Delta.Delta):
         print "Steps per mm: %.3f" % (self.steps)
 
         for i in range(0, 3):
-            print "Bed Level %c: %.3fmm" % (ord('A') + i, self.bed_screw[i][2])
+            print "Bed Level %c: %.3fmm (%.3f turns)" % (ord('A') + i, self.bed_screw[i][2], self.bed_screw[i][2]/0.5)
 
         # Adjust all the endstops
         for i in range(0, 3):
@@ -296,7 +287,7 @@ class DC42Delta(Delta.Delta):
 
             expectedRmsError = math.sqrt(sumOfSquares / len(delta_points))
             self._print_matrix("Expected probe error %.3f:" % (expectedRmsError), [expectedResiduals], 1, self.numPoints)
-            if attempt > 1 and expectedRmsError < 0.10:
+            if attempt > 1 and expectedRmsError < 0.125:
                 converged = True
                 break
 

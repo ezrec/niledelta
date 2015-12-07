@@ -193,9 +193,12 @@ class GCode:
             p |= 2
 
         self.move(point)
+        if point is None:
+            point = self.position[:]
+
         self.write("G30 P%d" % (p))
 
-        return self.z_probe - self.position[2]
+        return point[2] - self.z_probe
 
     # REPETIER
     def endstop_trim_clear(self):
