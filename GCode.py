@@ -30,6 +30,7 @@ class GCode:
     """GCode Sender"""
     port = None
     position = (0, 0, 0)
+    motor = (0, 0, 0)
     z_probe = 0
     e = 0.0
     f = 4000
@@ -73,14 +74,26 @@ class GCode:
         self.eeprom[name] = (val, int(etype), int(epos))
 
     def _parse_XYZE(self, report):
-        x = self.position[0]
-        y = self.position[1]
-        z = self.position[2]
+        x, y, z = self.position[:]
+        a, b, c = self.motor[:]
+
         z_probe = self.z_probe
         e = self.e
 
         for axis in report.split(" "):
             av = axis.split(":")
+
+            if av[0] == "A":
+                a = int(av[1])
+                continue
+
+            if av[0] == "B":
+                b = int(av[1])
+                continue
+
+            if av[0] == "C":
+                c = int(av[1])
+                continue
 
             if av[0] == "X":
                 x = float(av[1])
@@ -104,6 +117,7 @@ class GCode:
             pass
 
         self.position = (x, y, z)
+        self.motor = (a, b, c)
         self.e = e
         self.z_probe = z_probe
 
@@ -173,11 +187,11 @@ class GCode:
     def axis_report(self):
         """M114 axis report"""
         if self.port is None:
-            return self.position + (self.e, self.f)
+            return self.position + self.motor + (self.e, self.f)
 
         self.write("M114")
 
-        return self.position + (self.e, self.f)
+        return self.position + self.motor + (self.e, self.f)
 
     def zprobe(self, point = None, first = False, last = False):
         """G30 single-probe"""
@@ -197,6 +211,7 @@ class GCode:
             point = self.position[:]
 
         self.write("G30 P%d" % (p))
+        print "zprobe: %.3f, %.3f, %.3f => %.3f" % (point[0], point[1], point[2], self.z_probe)
 
         return point[2] - self.z_probe
 
