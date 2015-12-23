@@ -17,6 +17,12 @@
 import math
 import GCode
 import copy
+import numpy
+import mpl_toolkits.mplot3d.axes3d
+import matplotlib.pyplot
+import matplotlib.tri
+import matplotlib.cm
+
 
 class Delta(GCode.GCode):
     """ Delta Machine """
@@ -140,7 +146,7 @@ class Delta(GCode.GCode):
         return points
 
     def delta_probe(self, points = 7):
-        probe_points = self.probe_points(self.numPoints)
+        probe_points = self.probe_points(points)
         probe_offset = self.zprobe_offset()
 
         self.home()
@@ -159,6 +165,29 @@ class Delta(GCode.GCode):
 
         if self.port is not None:
             self.plot_points(delta_points)
+
+        if len(probe_points) == 13:
+            tO = delta_points[12][2]
+            tA = delta_points[0][2] - tO
+            pA = delta_points[3][2] - tO
+            tB = delta_points[2][2] - tO
+            pB = delta_points[5][2] - tO
+            tC = delta_points[4][2] - tO
+            pC = delta_points[1][2] - tO
+        elif len(probe_points) == 7:
+            tO = delta_points[3][2]
+            tA = delta_points[0][2] - tO
+            tB = delta_points[1][2] - tO
+            tC = delta_points[2][2] - tO
+            pA = delta_points[4][2] - tO
+            pB = delta_points[5][2] - tO
+            pC = delta_points[6][2] - tO
+        else:
+            return delta_points
+
+        print("tA: %.3f, %.3f (%.3f)" % (tA, pA, abs(tA-pA)))
+        print("tB: %.3f, %.3f (%.3f)" % (tB, pB, abs(tB-pB)))
+        print("tC: %.3f, %.3f (%.3f)" % (tC, pC, abs(tC-pC)))
 
         return delta_points
 
@@ -215,5 +244,36 @@ class Delta(GCode.GCode):
         y = (P - R * z) / Q
 
         return [x, y, z]
+
+    def _dist(self, a, b):
+        return math.sqrt(a[0]*a[0]+a[1]*a[1])-math.sqrt(b[0]*b[0]+b[1]*b[1])
+
+
+    def view(self, points, correction = None):
+        if correction is None:
+            correction = [[p[0],p[1],0] for p in points]
+
+        x = numpy.array([p[0] for p in points])
+        y = numpy.array([p[1] for p in points])
+        rc = numpy.array([self._dist(points[i], correction[i]) for i in range(0,len(points))])
+        zc = numpy.array([(points[i][2]+correction[i][2]) for i in range(0,len(points))])
+
+        tri = matplotlib.tri.Triangulation(x, y)
+        ref = matplotlib.tri.UniformTriRefiner(tri)
+
+        matplotlib.pyplot.figure()
+        matplotlib.pyplot.subplot(221)
+        matplotlib.pyplot.tripcolor(tri, zc, shading='gouraud', cmap=matplotlib.cm.rainbow)
+        matplotlib.pyplot.colorbar()
+        matplotlib.pyplot.title("Z Flatness")
+
+        if False:
+            matplotlib.pyplot.subplot(221)
+            matplotlib.pyplot.tripcolor(tri, rc, shading='gouraud', cmap=matplotlib.cm.rainbow)
+            matplotlib.pyplot.colorbar()
+            matplotlib.pyplot.title("Radial Adjustement")
+
+        matplotlib.pyplot.show()
+
 
 # vim: set shiftwidth=4 expandtab: #

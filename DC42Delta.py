@@ -23,11 +23,6 @@ import serial
 import time
 import GCode
 import Delta
-import numpy
-import mpl_toolkits.mplot3d.axes3d
-import matplotlib.pyplot
-import matplotlib.tri
-import matplotlib.cm
 
 class DC42Delta(Delta.Delta):
     """ DC42Delta Calibrator """
@@ -169,31 +164,6 @@ class DC42Delta(Delta.Delta):
         for i in range(0, 3):
             print "Diagonal Rod %c: %.3fmm" % (ord('A') + i, self.diagonal[i])
 
-    def _dist(self, a, b):
-        return math.sqrt(a[0]*a[0]+a[1]*a[1])-math.sqrt(b[0]*b[0]+b[1]*b[1])
-
-    def _view(self, points, correction):
-        x = numpy.array([p[0] for p in points])
-        y = numpy.array([p[1] for p in points])
-        rc = numpy.array([self._dist(points[i], correction[i]) for i in range(0,len(points))])
-        zc = numpy.array([(points[i][2]-correction[i][2]) for i in range(0,len(points))])
-
-        tri = matplotlib.tri.Triangulation(x, y)
-        ref = matplotlib.tri.UniformTriRefiner(tri)
-
-        matplotlib.pyplot.figure()
-        matplotlib.pyplot.subplot(221)
-        matplotlib.pyplot.tripcolor(tri, rc, shading='gouraud', cmap=matplotlib.cm.rainbow)
-        matplotlib.pyplot.colorbar()
-        matplotlib.pyplot.title("Radial Adjustement")
-
-        matplotlib.pyplot.subplot(222)
-        matplotlib.pyplot.tripcolor(tri, zc, shading='gouraud', cmap=matplotlib.cm.rainbow)
-        matplotlib.pyplot.colorbar()
-        matplotlib.pyplot.title("Z Flatness")
-
-        matplotlib.pyplot.show()
-
     def calibrate(self, target = 0.03):
         print "Original parameters:"
         self._print_parms()
@@ -225,10 +195,10 @@ class DC42Delta(Delta.Delta):
         converged = False
         correction = [[d[0], d[1], 0] for d in delta_points]
 
+        self.view(delta_points)
+
         for attempt in range(0, 10):
             # Build a Nx7 matrix of derivatives
-
-            self._view(delta_points, correction)
 
             dMatrix = [[0] * self.numFactors for _ in xrange(self.numPoints)]
             for i in range(0, len(delta_points)):
@@ -282,13 +252,12 @@ class DC42Delta(Delta.Delta):
             expectedResiduals = [0] * self.numPoints
             sumOfSquares = 0
 
-            correction = [0,0,0] * self.numPoints
-
             for i in range(0, len(delta_points)):
                 print ("[ %.3f, %.3f, %.3f ] " % (motor_points[i][0], motor_points[i][1], motor_points[i][2])),
 
-                correction[i] = self.motor_to_delta(motor_points[i])
-                correction[i][2] -= self.bed_offset(correction[i])/2
+                newpos = self.motor_to_delta(motor_points[i])
+                newpos[2] -= self.bed_offset(correction[i])/2
+                correction[i][2] = newpos[2]
                 print ("[ %.3f, %.3f, %.3f ] => [ %.3f, %.3f, %.3f ]" % (motor_points[i][0], motor_points[i][1], motor_points[i][2], correction[i][0], correction[i][1], correction[i][2]))
                 expectedResiduals[i] = delta_points[i][2] + correction[i][2]
                 sumOfSquares += math.pow(expectedResiduals[i], 2)
@@ -298,6 +267,9 @@ class DC42Delta(Delta.Delta):
             if attempt > 1 and expectedRmsError < 0.125:
                 converged = True
                 break
+
+            self.view(delta_points, correction)
+            pass
 
         # Display updated parameters
         if converged:
@@ -310,7 +282,7 @@ class DC42Delta(Delta.Delta):
 
             print "Converged solution found:"
             self._print_parms()
-            self._view(delta_points, correction)
+            self.view(delta_points, correction)
 
         return converged
 
