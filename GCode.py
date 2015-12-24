@@ -29,8 +29,7 @@ def collect_eeprom(filename = None):
 class GCode:
     """GCode Sender"""
     port = None
-    position = (0, 0, 0)
-    motor = (0, 0, 0)
+    position = (0, 0, 0, 0, 0, 0)
     z_probe = 0
     e = 0.0
     f = 4000
@@ -74,8 +73,8 @@ class GCode:
         self.eeprom[name] = (val, int(etype), int(epos))
 
     def _parse_XYZE(self, report):
-        x, y, z = self.position[:]
-        a, b, c = self.motor[:]
+        x, y, z = self.position[0:3]
+        a, b, c = self.position[3:6]
 
         z_probe = self.z_probe
         e = self.e
@@ -116,8 +115,7 @@ class GCode:
                 continue
             pass
 
-        self.position = (x, y, z)
-        self.motor = (a, b, c)
+        self.position = (x, y, z, a, b, c)
         self.e = e
         self.z_probe = z_probe
 
@@ -166,7 +164,8 @@ class GCode:
                 point[i] = self.position[i]
 
         if self.port is None:
-            self.position = point[:]
+            motor = self.delta_to_motor(point)
+            self.position = (point[0], point[1], point[2], motor[0], motor[1], motor[2])
             self.e = e
             self.f = f
             return
@@ -177,7 +176,8 @@ class GCode:
     def home(self):
         """G28 home """
         if self.port is None:
-            self.position = 0, 0, self.delta_bed()[1]
+            motor = self.delta_to_motor((0, 0, self.delta_bed()[1]))
+            self.position = (0, 0, self.delta_bed()[1], motor[0], motor[1], motor[2])
             self.e = 0
             return
 
@@ -187,19 +187,14 @@ class GCode:
     def axis_report(self):
         """M114 axis report"""
         if self.port is None:
-            return self.position + self.motor + (self.e, self.f)
+            return self.position + (self.e, self.f)
 
         self.write("M114")
 
-        return self.position + self.motor + (self.e, self.f)
+        return self.position + (self.e, self.f)
 
     def zprobe(self, point = None, first = False, last = False):
         """G30 single-probe"""
-        if self.port is None:
-            if point is None:
-                point = (self.position[0], self.position[1])
-            return self.fake_probe.probe(delta=self, point=point)
-
         p = 0
         if first:
             p |= 1
@@ -210,10 +205,13 @@ class GCode:
         if point is None:
             point = self.position[:]
 
+        if self.port is None:
+            return self.fake_probe.probe(delta=self, point=point)
+
         self.write("G30 P%d" % (p))
         print "zprobe: %.3f, %.3f, %.3f => %.3f" % (point[0], point[1], point[2], self.z_probe)
 
-        return point[2] - self.z_probe
+        return self.z_probe
 
     # REPETIER
     def endstop_trim_clear(self):

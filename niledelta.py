@@ -19,7 +19,7 @@ import serial
 import time
 import sys
 
-import DC42Delta
+import McCalibrate
 
 def main(port = "/dev/ttyUSB0", baudrate = 250000):
     port = serial.Serial(port=port, baudrate=baudrate,
@@ -27,7 +27,7 @@ def main(port = "/dev/ttyUSB0", baudrate = 250000):
                          stopbits=serial.STOPBITS_ONE,
                          bytesize=serial.EIGHTBITS)
 
-    delta = DC42Delta.DC42Delta(port)
+    delta = McCalibrate.McCalibrate(port)
 
     delta.calibrate()
 

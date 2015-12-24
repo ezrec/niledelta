@@ -21,8 +21,8 @@ import Delta
 
 class SmoothieDelta(Delta.Delta):
     """ SmootheDelta Calibrator """
-    def __init__(self, gcode = None):
-        Delta.Delta.__init__(self, gcode)
+    def __init__(self, port = None, probe = None, eeprom = None):
+        Delta.Delta.__init__(self, port = port, probe = probe, eeprom = eeprom)
 
     def calibrate_endstops(self, target = 0.03):
         """ Run the endstop calibration """
@@ -67,7 +67,7 @@ class SmoothieDelta(Delta.Delta):
 
             if (maxz - minz) < target:
                 print("  Pass: A:%f, B:%f, C:%f" % (trim[0], trim[1], trim[2]))
-                return true
+                return True
 
             # Worst case trims
             trim = [0, 0, 0]
@@ -86,38 +86,44 @@ class SmoothieDelta(Delta.Delta):
 
         # Find the bed at 0,0
         self.home()
-        cmm = self.zprobe()
+        cmm = self.zprobe([0,0,20])
 
         delta_radius = self.delta_radius()
 
-        print("Radius: %fmm" % (delta_radius))
+        for i in range(0, 3):
+            print("Radius %c: %.3fmm" % (i+65, delta_radius[i]))
 
         drinc = 2.5
 
-        for i in range(0,10):
-            # Probe the three towers, and average
-            zsum = 0
-            for t in range(0, 3):
-                zsum += self.zprobe((pints[t][0], points[t][1], 20))
+        for p in range(0,10):
+            for i in range(0, 3):
+                # Probe the three towers, and average
+                zsum = 0
+                for t in range(0, 3):
+                    zsum += self.zprobe((points[t][0], points[t][1], 20))
 
-            m = zsum/3.0
-            d = cmm - m
+                m = zsum/3.0
+                d = cmm - m
 
-            if math.fabs(d) < target:
-                print("  Pass: %fmm" % (delta_radius))
-                return True
+                if math.fabs(d) < target:
+                    print("  Pass: Radius %c: %fmm" % (65+i, delta_radius[i]))
+                    return True
 
-            # increase delta radius to adjust for low center
-            # decrease delta radius to adjust for high center
-            delta_radius += d * drinc
+                # increase delta radius to adjust for low center
+                # decrease delta radius to adjust for high center
+                delta_radius[i] += d * drinc
+                print("  Pass: Radius %c: %fmm" % (65+i, delta_radius[i]))
 
-            self.delta_radius(delta_radius)
+                self.radius = delta_radius[:]
+                self.update()
 
-            self.home()
-            cmm = self.zprobe()
+                self.home()
+                cmm = self.zprobe()
+                pass
             pass
 
-        print("  FAIL: %fmm" % (delta_radius))
+        for i in range(0, 3):
+            print("  FAIL: Radius %c %fmm" % (65+i, delta_radius[i]))
         pass
 
     def calibrate(self):

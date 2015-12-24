@@ -41,6 +41,7 @@ class Delta(GCode.GCode):
 
     def copy(self):
         delta = Delta(None)
+        delta.steps = self.steps
         delta.bed_radius = self.bed_radius
         delta.bed_height = self.bed_height
         delta.radius = self.radius[:]
@@ -49,6 +50,7 @@ class Delta(GCode.GCode):
         delta.endstop = self.endstop[:]
         delta.bed_factor = self.bed_factor
         delta.bed_screw = self.bed_screw[:]
+        delta.bed_matrix = self.bed_matrix[:]
         delta.recalc()
         return delta
 
@@ -154,12 +156,13 @@ class Delta(GCode.GCode):
         self.zprobe(None, first = True)
 
         # Collect probe points
-        delta_points = [[x[0], x[1], 0] for x in probe_points]
+        delta_points = [[x[0], x[1], 0, 0, 0, 0] for x in probe_points]
         for point in delta_points:
             point[2] = self.zprobe((point[0], point[1], 20))
             # Convert from probe to nozzle
             point[0] -= probe_offset[0]
             point[1] -= probe_offset[1]
+            point[3::] = self.axis_report()[3::]
 
         self.zprobe(None, last = True)
 
